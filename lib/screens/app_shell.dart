@@ -19,10 +19,12 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final screens = [
+    final List<Widget> screens = [
       HomeScreen(
         onOpenVoiceAssistant: () => _goTo(2),
         onOpenBenefits: () => _goTo(1),
+        onOpenDocumentScanner: () {},
+        onViewAllBenefits: () => _goTo(1),
       ),
       BenefitsScreen(onBack: () => _goTo(0)),
       const VoiceAssistantScreen(),

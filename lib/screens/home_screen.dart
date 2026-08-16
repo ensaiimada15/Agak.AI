@@ -6,168 +6,73 @@ class HomeScreen extends StatelessWidget {
     super.key,
     required this.onOpenVoiceAssistant,
     required this.onOpenBenefits,
+    required this.onOpenDocumentScanner,
+    required this.onViewAllBenefits,
   });
 
   final VoidCallback onOpenVoiceAssistant;
   final VoidCallback onOpenBenefits;
+  final VoidCallback onOpenDocumentScanner;
+  final VoidCallback onViewAllBenefits;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.pageBg,
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _DashboardHeader(onSearchTap: onOpenVoiceAssistant, onExplore: onOpenBenefits),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _SectionHeader(title: 'Service Categories'),
-                  const SizedBox(height: 14),
-                  const _ServiceCategoriesGrid(),
-                  const SizedBox(height: 24),
-                  const _SectionHeader(title: 'Hiring'),
-                  const SizedBox(height: 14),
-                  const _JobCard(
-                    title: 'Something',
-                    price: '12\$ - 30\$',
-                    location: 'Rovira Road, 912..',
-                    rating: '4.5',
-                    reviews: '(23 Reviews)',
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardHeader extends StatelessWidget {
-  const _DashboardHeader({required this.onSearchTap, required this.onExplore});
-
-  final VoidCallback onSearchTap;
-  final VoidCallback onExplore;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.dashboardGreen,
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(9),
-          bottomRight: Radius.circular(9),
-        ),
-        boxShadow: [
-          BoxShadow(color: Color(0x40000000), blurRadius: 4, offset: Offset(0, 4)),
-        ],
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.location_on_outlined, color: Colors.white, size: 30),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Location',
-                            style: TextStyle(color: Colors.white, fontSize: 13)),
-                        SizedBox(height: 2),
-                        Text('Dumaguete City',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                decoration: TextDecoration.underline)),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 39,
-                    height: 39,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white24,
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Image.asset('assets/images/avatar.png', fit: BoxFit.cover),
-                  ),
-                ],
+              const _GreetingHeader(
+                userName: 'Maria',
+                subtitle: 'Kuyogan tika karong adlawa.',
+                avatarUrl: 'https://placehold.co/52x52',
               ),
-              const SizedBox(height: 18),
-              InkWell(
-                borderRadius: BorderRadius.circular(6),
-                onTap: onSearchTap,
-                child: Container(
-                  height: 44,
-                  padding: const EdgeInsets.symmetric(horizontal: 13),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors.fieldBg),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.search, size: 18, color: AppColors.slateText),
-                      const SizedBox(width: 10),
-                      const Expanded(
-                        child: Text('AI Search...',
-                            style: TextStyle(color: AppColors.ink, fontSize: 13)),
-                      ),
-                      const Icon(Icons.auto_awesome, size: 20, color: AppColors.dashboardGreen),
-                    ],
-                  ),
-                ),
+              const SizedBox(height: 24),
+              _SectionHeader(
+                title: 'Available Benefits',
+                onViewAll: onViewAllBenefits,
               ),
-              const SizedBox(height: 22),
+              const SizedBox(height: 14),
+              const _BenefitCard(
+                title: 'Pension Payout / Pensyon',
+                dateAndLocation: 'March 15, City Hall',
+                icon: Icons.payments_outlined,
+              ),
+              const SizedBox(height: 12),
+              const _BenefitCard(
+                title: 'Robinsons Place Free...',
+                dateAndLocation: 'March 18, Robinsons Place Du...',
+                icon: Icons.local_hospital_outlined,
+              ),
+              const SizedBox(height: 28),
               Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Check out the latest job opportunities!',
-                          style: TextStyle(color: Colors.white, fontSize: 14),
-                        ),
-                        const SizedBox(height: 12),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(6),
-                          onTap: onExplore,
-                          child: Container(
-                            height: 40,
-                            width: 107,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text('Explore',
-                                style: TextStyle(
-                                    color: AppColors.dashboardGreen,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600)),
-                          ),
-                        ),
-                      ],
+                    child: _ActionTile(
+                      title: 'Voice Assistant',
+                      subtitle: 'Tingog Tabang',
+                      icon: Icons.mic,
+                      bgColor: const Color(0xFFD2ECFF),
+                      accentColor: const Color(0xFF0284C7),
+                      textColor: const Color(0xFF093582),
+                      onTap: onOpenVoiceAssistant,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Image.asset('assets/images/dashboard_hero.png', height: 100),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _ActionTile(
+                      title: 'My Benefits',
+                      subtitle: 'Mga Benepisyo',
+                      icon: Icons.card_membership,
+                      bgColor: const Color(0xFFFFE7D2),
+                      accentColor: const Color(0xFFD35400),
+                      textColor: const Color(0xFFD35400),
+                      onTap: onOpenBenefits,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -178,65 +83,120 @@ class _DashboardHeader extends StatelessWidget {
   }
 }
 
+// =============================================================================
+// SUB-WIDGET DEFINITIONS
+// =============================================================================
+
+class _GreetingHeader extends StatelessWidget {
+  const _GreetingHeader({
+    required this.userName,
+    required this.subtitle,
+    required this.avatarUrl,
+  });
+
+  final String userName;
+  final String subtitle;
+  final String avatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFFE3EFEA),
+            border: Border.all(color: const Color(0xFF093582), width: 2.6),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Image.network(
+            avatarUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Color(0xFF093582)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Maayong adlaw, $userName!',
+                style: const TextStyle(
+                  color: Color(0xFF11221D),
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'LINE Seed Sans',
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: Color(0xFF334D47),
+                  fontSize: 12,
+                  fontFamily: 'LINE Seed Sans',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title});
+  const _SectionHeader({
+    required this.title,
+    required this.onViewAll,
+  });
 
   final String title;
+  final VoidCallback onViewAll;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title,
-            style: const TextStyle(
-                fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.ink)),
-        const Text('View All>',
-            style: TextStyle(fontSize: 14, color: AppColors.dashboardAccent)),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 19,
+            fontFamily: 'LINE Seed Sans',
+            fontWeight: FontWeight.w600,
+            color: Colors.black,
+          ),
+        ),
+        InkWell(
+          onTap: onViewAll,
+          child: const Text(
+            'view all >',
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.dashboardAccent,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
       ],
     );
   }
 }
 
-class _ServiceCategoriesGrid extends StatelessWidget {
-  const _ServiceCategoriesGrid();
-
-  @override
-  Widget build(BuildContext context) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 3,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 94 / 46,
-      children: List.generate(
-        6,
-        (_) => Container(
-          decoration: BoxDecoration(
-            color: AppColors.placeholderGrey,
-            borderRadius: BorderRadius.circular(6),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _JobCard extends StatelessWidget {
-  const _JobCard({
+class _BenefitCard extends StatelessWidget {
+  const _BenefitCard({
     required this.title,
-    required this.price,
-    required this.location,
-    required this.rating,
-    required this.reviews,
+    required this.dateAndLocation,
+    required this.icon,
   });
 
   final String title;
-  final String price;
-  final String location;
-  final String rating;
-  final String reviews;
+  final String dateAndLocation;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -244,63 +204,202 @@ class _JobCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 2),
         boxShadow: const [
-          BoxShadow(color: Color(0x40000000), blurRadius: 4, offset: Offset(0, 4)),
+          BoxShadow(
+            color: Color(0x080F172A),
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
           Container(
-            height: 112,
-            width: double.infinity,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.imagePlaceholderBg,
-              borderRadius: BorderRadius.circular(6),
+            width: 48,
+            height: 48,
+            decoration: const BoxDecoration(
+              color: Color(0xFF4FB152),
+              shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.image_outlined, size: 24, color: AppColors.slateText),
+            child: Icon(icon, color: Colors.white, size: 24),
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(title,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.ink)),
-              Row(
-                children: [
-                  Text('$rating ', style: const TextStyle(fontSize: 14, color: AppColors.ink)),
-                  const Icon(Icons.star, size: 14, color: Colors.amber),
-                  const SizedBox(width: 4),
-                  Text(reviews, style: const TextStyle(fontSize: 14, color: AppColors.ink)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(price, style: const TextStyle(fontSize: 14, color: AppColors.ink)),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(location, style: const TextStyle(fontSize: 14, color: AppColors.ink)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.dashboardAccentBg,
-                  borderRadius: BorderRadius.circular(6),
+                    color: Color(0xFF0F172A),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Rubik',
+                  ),
                 ),
-                child: const Text('AI Recommend!',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.dashboardAccent)),
+                const SizedBox(height: 2),
+                Text(
+                  dateAndLocation,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF475569),
+                    fontSize: 13,
+                    fontFamily: 'Rubik',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.bgColor,
+    required this.accentColor,
+    required this.textColor,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color bgColor;
+  final Color accentColor;
+  final Color textColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: bgColor,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 165,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: accentColor,
+                child: Icon(icon, color: Colors.white, size: 28),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'Rubik',
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: textColor.withOpacity(0.8),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: 'Rubik',
+                ),
               ),
             ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WideActionBanner extends StatelessWidget {
+  const _WideActionBanner({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.bgColor,
+    required this.accentColor,
+    required this.textColor,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color bgColor;
+  final Color accentColor;
+  final Color textColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: bgColor,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: double.infinity,
+          height: 140,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: accentColor,
+                child: Icon(icon, color: Colors.white, size: 28),
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        fontFamily: 'Rubik',
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: textColor.withOpacity(0.8),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: 'Rubik',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios, color: textColor, size: 18),
+            ],
+          ),
+        ),
       ),
     );
   }
