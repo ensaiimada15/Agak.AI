@@ -8,10 +8,8 @@ import 'benefit.dart';
 class BenefitService {
   // TODO: replace with your project's values.
   // Found in Supabase dashboard: Project Settings > API.
-  static const String _baseUrl = "https://nkstwuyayvzncisjaghg.supabase.co";
-  static const String _apiKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5rc3R3dXlheXZ6bmNpc2phZ2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3ODM0ODAsImV4cCI6MjEwMjM1OTQ4MH0.oB24PuOLB4c67sFidiS0b9K1tWYPPkMOPOPbdXJNhO0';
-  static const String _table = 'benefit';
-
+  static const String _apiKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5rc3R3dXlheXZ6bmNpc2phZ2hnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY3ODM0ODAsImV4cCI6MjEwMjM1OTQ4MH0.oB24PuOLB4c67sFidiS0b9K1tWYPPkMOPOPbdXJNhO0';
   static List<Benefit>? _cachedBenefits;
 
   /// Fetches all benefits.
@@ -48,5 +46,55 @@ class BenefitService {
     } catch (e) {
       throw Exception('Failed to load benefits: $e');
     }
+  }
+
+  /// Benefits that are approximate/relevant to the senior at [address]:
+  /// national/universal benefits always count, plus any benefit whose LGU
+  /// matches a city/barangay name found in the address. If nothing matches
+  /// specifically, falls back to the full list so the screen is never empty.
+  static Future<List<Benefit>> loadRelevantBenefits(String? address) async {
+    final all = await loadBenefits();
+    final tokens = _addressTokens(address ?? '');
+    if (tokens.isEmpty) return all;
+
+    final relevant = all.where((b) {
+      final lgu = b.lgu.toLowerCase();
+      if (lgu.startsWith('national') || lgu.contains('all lgu')) return true;
+      return tokens.any(lgu.contains);
+    }).toList();
+
+    return relevant.isEmpty ? all : relevant;
+  }
+
+  /// Pulls candidate place names out of an address like
+  /// "Barangay Gun-ob, Lapu-Lapu City" → {lapu, gun} (>= 3 letters, minus
+  /// common words).
+  static Set<String> _addressTokens(String address) {
+    const stopWords = {
+      'the',
+      'and',
+      'barangay',
+      'brgy',
+      'city',
+      'province',
+      'philippines',
+      'street',
+      'st',
+      'zone',
+      'purok',
+      'sitio',
+      'village',
+      'road',
+      'blvd',
+    };
+    final cleaned = address
+        .toLowerCase()
+        .replaceAll(RegExp(r'\bbrgy\.?\b'), ' ')
+        .replaceAll(RegExp(r'[.,;\-]'), ' ');
+    return cleaned
+        .split(RegExp(r'\s+'))
+        .map((t) => t.trim())
+        .where((t) => t.length >= 3 && !stopWords.contains(t))
+        .toSet();
   }
 }

@@ -8,6 +8,7 @@ class Benefit {
     required this.iconKey,
     required this.category,
     required this.description,
+    this.lgu = '',
   });
 
   final String id;
@@ -16,6 +17,10 @@ class Benefit {
   final String iconKey;
   final String category;
   final String description;
+
+  /// Which LGU(s) the benefit applies to, e.g. "National / All LGUs",
+  /// "Lapu-Lapu City", "Dumaguete City". Used for location filtering.
+  final String lgu;
 
   IconData get iconData {
     switch (iconKey.toLowerCase()) {
@@ -51,9 +56,8 @@ class Benefit {
 
     // --- location ---
     // Local asset uses 'location'; Supabase uses 'lgu' (local government unit).
-    final location = (json['location'] as String?) ??
-        (json['lgu'] as String?) ??
-        '';
+    final location =
+        (json['location'] as String?) ?? (json['lgu'] as String?) ?? '';
 
     // --- combined date/location display string ---
     String combinedDateLoc = json['dateAndLocation'] as String? ?? '';
@@ -63,9 +67,8 @@ class Benefit {
 
     // --- icon key ---
     // Local asset uses 'iconKey'; Supabase column is lowercase 'iconkey'.
-    final iconKey = (json['iconKey'] as String?) ??
-        (json['iconkey'] as String?) ??
-        '';
+    final iconKey =
+        (json['iconKey'] as String?) ?? (json['iconkey'] as String?) ?? '';
 
     // --- description ---
     // Fall back to Supabase's 'simplified_description' if 'description' is missing.
@@ -80,6 +83,7 @@ class Benefit {
       iconKey: iconKey,
       category: json['category'] as String? ?? 'General',
       description: description,
+      lgu: json['lgu'] as String? ?? '',
     );
   }
 
@@ -93,8 +97,18 @@ class Benefit {
     if (parsed == null) return raw;
 
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${months[parsed.month - 1]} ${parsed.day}, ${parsed.year}';
   }

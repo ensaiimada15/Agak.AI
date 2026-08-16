@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/benefit.dart';
 import '../models/benefit_service.dart';
+import '../models/profile_service.dart';
 
 class BenefitsScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -17,7 +18,10 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
   @override
   void initState() {
     super.initState();
-    _benefitsFuture = BenefitService.loadBenefits();
+    // Only benefits that are relevant to THIS senior's location.
+    _benefitsFuture = ProfileService.loadProfile()
+        .then((p) => BenefitService.loadRelevantBenefits(p.address))
+        .catchError((_) => BenefitService.loadBenefits());
   }
 
   @override
@@ -42,8 +46,10 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
-                    onPressed: widget.onBack ?? () => Navigator.maybePop(context),
+                    icon: const Icon(Icons.arrow_back_rounded,
+                        color: Color(0xFF0F172A)),
+                    onPressed:
+                        widget.onBack ?? () => Navigator.maybePop(context),
                   ),
                   const SizedBox(width: 8),
                   Expanded(

@@ -68,11 +68,14 @@ class AgakApi {
   /// Provide EITHER [text] (typed question) OR [audioBytes] (recording).
   /// [audioFormat] is the container: m4a (default), wav, ogg, mp3, webm...
   /// [history] = prior turns: [{'role':'user'|'assistant','content':'...'}].
+  /// [user] = the logged-in senior's profile (name/age/gender/address) so
+  /// the LLM can personalize answers.
   Stream<AgakEvent> chatStream({
     String? text,
     Uint8List? audioBytes,
     String audioFormat = 'm4a',
     List<Map<String, String>>? history,
+    Map<String, Object?>? user,
   }) async* {
     final req = http.Request(
       'POST',
@@ -86,6 +89,7 @@ class AgakApi {
         'audio_format': audioFormat,
       },
       if (history != null && history.isNotEmpty) 'history': history,
+      if (user != null) 'user': user,
       'stream': true,
     });
 
@@ -97,9 +101,8 @@ class AgakApi {
     }
 
     String? event;
-    final lines = res.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter());
+    final lines =
+        res.stream.transform(utf8.decoder).transform(const LineSplitter());
 
     await for (final line in lines) {
       if (line.startsWith('event: ')) {

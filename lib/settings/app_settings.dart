@@ -35,20 +35,17 @@ extension AppLanguageMeta on AppLanguage {
   }
 }
 
-/// Single source of truth for theme + language. Lives above [MaterialApp]
-/// (see main_example.dart) so changing it rebuilds the whole app, not just
-/// one screen.
+/// Single source of truth for language. Lives above [MaterialApp] so
+/// changing it rebuilds the whole app, not just one screen.
 ///
 /// Plain ChangeNotifier — no external state management package required.
+/// (Dark mode was intentionally dropped: the app is light-only for seniors.)
 class AppSettings extends ChangeNotifier {
-  bool _isDarkMode = false;
   AppLanguage _language = AppLanguage.bisaya;
   Map<String, String> _translations = {};
   bool _ready = false;
 
-  bool get isDarkMode => _isDarkMode;
   AppLanguage get language => _language;
-  ThemeMode get themeMode => _isDarkMode ? ThemeMode.dark : ThemeMode.light;
 
   /// True once the first translation file has finished loading. Gate your
   /// app's first frame on this (see main_example.dart) so you never flash
@@ -62,16 +59,7 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setDarkMode(bool value) {
-    if (_isDarkMode == value) return;
-    _isDarkMode = value;
-    notifyListeners();
-    _persist();
-  }
-
-  void toggleDarkMode() => setDarkMode(!_isDarkMode);
-
-  Future<void> setLanguage(AppLanguage lang) async {
+  void setLanguage(AppLanguage lang) async {
     if (_language == lang) return;
     await _loadTranslations(lang);
     _language = lang;
@@ -82,8 +70,10 @@ class AppSettings extends ChangeNotifier {
   Future<void> _loadTranslations(AppLanguage lang) async {
     try {
       final raw = await rootBundle.loadString('assets/lang/${lang.code}.json');
-      final Map<String, dynamic> decoded = json.decode(raw) as Map<String, dynamic>;
-      _translations = decoded.map((key, value) => MapEntry(key, value.toString()));
+      final Map<String, dynamic> decoded =
+          json.decode(raw) as Map<String, dynamic>;
+      _translations =
+          decoded.map((key, value) => MapEntry(key, value.toString()));
     } catch (e, st) {
       // Fail soft: keep whatever translations we had (or empty), so the UI
       // falls back to showing raw keys instead of crashing.
@@ -105,11 +95,7 @@ class AppSettings extends ChangeNotifier {
   }
 
   void _persist() {
-    // Hook persistence here later, e.g. with shared_preferences:
-    //   final prefs = await SharedPreferences.getInstance();
-    //   await prefs.setBool('isDarkMode', _isDarkMode);
-    //   await prefs.setString('language', _language.code);
-    // Left as a no-op for now since you're keeping this dependency-free;
-    // without it, dark mode / language reset to defaults on app restart.
+    // Hook language persistence here later, e.g. with shared_preferences.
+    // Left as a no-op for now.
   }
 }

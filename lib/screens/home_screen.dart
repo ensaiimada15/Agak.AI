@@ -29,14 +29,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // App state variables
   bool _isMenuExpanded = false;
-  bool _isDarkMode = false;
   String _selectedLanguage = 'Bisaya';
 
   @override
   void initState() {
     super.initState();
-    _benefitsFuture = BenefitService.loadBenefits();
     _profileFuture = ProfileService.loadProfile();
+    // Benefits shown on the home tab are filtered to THIS senior's area;
+    // if the profile can't load, fall back to the full list.
+    _benefitsFuture = _profileFuture
+        .then((p) => BenefitService.loadRelevantBenefits(p.address))
+        .catchError((_) => BenefitService.loadBenefits());
   }
 
   // Input-stealing modal dialog helper
@@ -160,12 +163,14 @@ class _HomeScreenState extends State<HomeScreen> {
           if (snapshot.hasError) {
             return Text(
               'Failed to load profile: ${snapshot.error}',
-              style: const TextStyle(color: Colors.red, fontSize: 13, fontFamily: 'Rubik'),
+              style: const TextStyle(
+                  color: Colors.red, fontSize: 13, fontFamily: 'Rubik'),
             );
           }
 
           if (!snapshot.hasData) {
-            return const Text('No profile data available.', style: TextStyle(fontFamily: 'Rubik'));
+            return const Text('No profile data available.',
+                style: TextStyle(fontFamily: 'Rubik'));
           }
 
           final profile = snapshot.data!;
@@ -177,9 +182,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 _ProfileDetailRow(label: 'Name', value: profile.name),
                 _ProfileDetailRow(label: 'Senior ID', value: profile.seniorId),
                 _ProfileDetailRow(label: 'Mobile No.', value: profile.mobileNo),
-                _ProfileDetailRow(label: 'Age', value: '${profile.age} years old'),
+                _ProfileDetailRow(
+                    label: 'Age', value: '${profile.age} years old'),
+                _ProfileDetailRow(label: 'Gender', value: profile.gender),
                 _ProfileDetailRow(label: 'Birthday', value: profile.birthday),
-                _ProfileDetailRow(label: 'Address', value: profile.address, isLast: true),
+                _ProfileDetailRow(
+                    label: 'Address', value: profile.address, isLast: true),
               ],
             ),
           );
@@ -195,7 +203,8 @@ class _HomeScreenState extends State<HomeScreen> {
       title: 'Log Out',
       content: const Text(
         'Are you sure you want to log out of your account?',
-        style: TextStyle(color: Color(0xFF334D47), fontSize: 14, fontFamily: 'Rubik'),
+        style: TextStyle(
+            color: Color(0xFF334D47), fontSize: 14, fontFamily: 'Rubik'),
       ),
       confirmText: 'Log Out',
       onConfirm: () {},
@@ -236,14 +245,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     FutureBuilder<Profile>(
                       future: _profileFuture,
                       builder: (context, snapshot) {
-                        final displayName = snapshot.hasData ? snapshot.data!.name.split(' ').first : 'Maria';
+                        final displayName = snapshot.hasData
+                            ? snapshot.data!.firstName
+                            : 'Lola';
 
                         return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
                           child: _GreetingHeader(
                             userName: displayName,
                             subtitle: 'Kuyogan tika karong adlawa.',
-                            avatarUrl: 'https://placehold.co/52x52',
+                            avatarUrl: 'https://placehold.co/52x52.png',
                             isMenuExpanded: _isMenuExpanded,
                             onMenuTap: () {
                               if (widget.onMenuTap != null) {
@@ -261,7 +273,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     // Inline Cascading Dropdown Bar
                     if (_isMenuExpanded) ...[
-                      const Divider(color: Color(0xFFE2E8F0), height: 1, thickness: 1),
+                      const Divider(
+                          color: Color(0xFFE2E8F0), height: 1, thickness: 1),
 
                       // 1. Profile Link
                       _CascadingMenuRow(
@@ -275,10 +288,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
                       // 3. Direct 3-Way Inline Language Toggle Row
                       Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 10, horizontal: 16),
                         decoration: const BoxDecoration(
                           border: Border(
-                            bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
+                            bottom:
+                                BorderSide(color: Color(0xFFF1F5F9), width: 1),
                           ),
                         ),
                         child: Row(
@@ -286,7 +301,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             const Row(
                               children: [
-                                Icon(Icons.language_outlined, color: Color(0xFF093582), size: 22),
+                                Icon(Icons.language_outlined,
+                                    color: Color(0xFF093582), size: 22),
                                 SizedBox(width: 14),
                                 Text(
                                   'Language',
@@ -309,7 +325,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ],
                                 onPressed: (int index) {
                                   setState(() {
-                                    _selectedLanguage = ['Bisaya', 'Tagalog', 'English'][index];
+                                    _selectedLanguage =
+                                        ['Bisaya', 'Tagalog', 'English'][index];
                                   });
                                 },
                                 fillColor: const Color(0xFF093582),
@@ -322,24 +339,36 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 children: const [
                                   Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 10),
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 10),
                                     child: Text(
                                       'Bisaya',
-                                      style: TextStyle(fontSize: 12, fontFamily: 'Rubik', fontWeight: FontWeight.w600),
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontFamily: 'Rubik',
+                                          fontWeight: FontWeight.w600),
                                     ),
                                   ),
                                   Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 10),
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 10),
                                     child: Text(
                                       'Tagalog',
-                                      style: TextStyle(fontSize: 12, fontFamily: 'Rubik', fontWeight: FontWeight.w600),
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontFamily: 'Rubik',
+                                          fontWeight: FontWeight.w600),
                                     ),
                                   ),
                                   Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 10),
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 10),
                                     child: Text(
                                       'English',
-                                      style: TextStyle(fontSize: 12, fontFamily: 'Rubik', fontWeight: FontWeight.w600),
+                                      style: TextStyle(
+                                          fontSize: 12,
+                                          fontFamily: 'Rubik',
+                                          fontWeight: FontWeight.w600),
                                     ),
                                   ),
                                 ],
@@ -364,7 +393,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // Rest of Screen Content with Standard Page Padding
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -378,7 +408,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     FutureBuilder<List<Benefit>>(
                       future: _benefitsFuture,
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
                           return const Padding(
                             padding: EdgeInsets.symmetric(vertical: 20),
                             child: Center(child: CircularProgressIndicator()),
@@ -390,23 +421,29 @@ class _HomeScreenState extends State<HomeScreen> {
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             child: Text(
                               'Error loading benefits: ${snapshot.error}',
-                              style: const TextStyle(color: Colors.red, fontSize: 13),
+                              style: const TextStyle(
+                                  color: Colors.red, fontSize: 13),
                             ),
                           );
                         }
 
                         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return const Text('No available benefits at this time.');
+                          return const Text(
+                              'No available benefits at this time.');
                         }
 
-                        final displayedBenefits = snapshot.data!.take(3).toList();
+                        final displayedBenefits =
+                            snapshot.data!.take(3).toList();
 
                         return Column(
                           children: [
-                            for (int i = 0; i < displayedBenefits.length; i++) ...[
+                            for (int i = 0;
+                                i < displayedBenefits.length;
+                                i++) ...[
                               _BenefitCard(
                                 title: displayedBenefits[i].title,
-                                dateAndLocation: displayedBenefits[i].dateAndLocation,
+                                dateAndLocation:
+                                    displayedBenefits[i].dateAndLocation,
                                 icon: displayedBenefits[i].iconData,
                               ),
                               if (i < displayedBenefits.length - 1)
@@ -546,7 +583,8 @@ class _GreetingHeader extends StatelessWidget {
           child: Image.network(
             avatarUrl,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Color(0xFF093582)),
+            errorBuilder: (_, __, ___) =>
+                const Icon(Icons.person, color: Color(0xFF093582)),
           ),
         ),
         const SizedBox(width: 12),
@@ -635,7 +673,9 @@ class _CascadingMenuRow extends StatelessWidget {
             Text(
               subtitle,
               style: TextStyle(
-                color: isDestructive ? Colors.red.withOpacity(0.7) : const Color(0xFF64748B),
+                color: isDestructive
+                    ? Colors.red.withOpacity(0.7)
+                    : const Color(0xFF64748B),
                 fontSize: 13,
                 fontFamily: 'Rubik',
               ),
@@ -643,7 +683,9 @@ class _CascadingMenuRow extends StatelessWidget {
             const SizedBox(width: 6),
             Icon(
               Icons.chevron_right,
-              color: isDestructive ? Colors.red.withOpacity(0.5) : const Color(0xFF94A3B8),
+              color: isDestructive
+                  ? Colors.red.withOpacity(0.5)
+                  : const Color(0xFF94A3B8),
               size: 18,
             ),
           ],

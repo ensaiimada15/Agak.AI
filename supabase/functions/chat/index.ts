@@ -99,6 +99,21 @@ async function loadBenefitsContext(): Promise<string> {
 
 interface HistoryMsg { role: "user" | "assistant"; content: string }
 
+// ---- personalization: the logged-in senior ----------------
+// The frontend sends the member's profile ({name, age, gender, address})
+// so AgakAI can greet them by name and tailor answers to their location.
+function memberContext(user: any): string {
+  if (!user || typeof user !== "object") return ""
+  const parts = [
+    user.name ? `Name: ${user.name}` : "",
+    user.age ? `Age: ${user.age}` : "",
+    user.gender ? `Gender: ${user.gender}` : "",
+    user.address ? `Address: ${user.address}` : "",
+  ].filter((p) => p.length > 0)
+  if (parts.length === 0) return ""
+  return `\n\nThis senior's profile (personalize your answers — use their name and location where relevant):\n${parts.join("\n")}`
+}
+
 // ---- sentence splitting for early TTS ----
 function consumeSentences(buffer: string): { flush: string | null; remainder: string } {
   const re = /[.!?…।。！？]+["')\]”」』]*\s+/g
@@ -150,7 +165,7 @@ serve(async (req) => {
   }
 
   try {
-    const { audio_data, audio_format, text, history, stream } = await req.json()
+    const { audio_data, audio_format, text, history, stream, user } = await req.json()
 
     // ---------------- LEGACY (non-streaming) MODE ----------------
     // Default for backwards compatibility: one JSON blob, same shape as before.
@@ -164,7 +179,7 @@ serve(async (req) => {
       if (!question.trim()) throw new Error("No speech detected")
 
       const messages = [
-        { role: "system" as const, content: persona.replace("{{BENEFITS}}", benefitsContext) },
+        { role: "system" as const, content: persona.replace("{{BENEFITS}}", benefitsContext) + memberContext(user) },
         ...((history ?? []) as HistoryMsg[]),
         { role: "user" as const, content: question },
       ]
@@ -207,7 +222,7 @@ serve(async (req) => {
 
             const [persona, benefitsContext] = await Promise.all([personaPromise, benefitsPromise])
             const messages = [
-              { role: "system" as const, content: persona.replace("{{BENEFITS}}", benefitsContext) },
+              { role: "system" as const, content: persona.replace("{{BENEFITS}}", benefitsContext) + memberContext(user) },
               ...((history ?? []) as HistoryMsg[]),
               { role: "user" as const, content: question },
             ]

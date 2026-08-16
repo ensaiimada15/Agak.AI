@@ -6,6 +6,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
+import '../models/profile_service.dart';
 import '../services/agakai_api.dart';
 import '../services/app_config.dart';
 import '../services/live_tts_player.dart';
@@ -26,9 +27,9 @@ const _suggestedQuestions = [
   _SuggestedQuestion('Senior Discount', 'unsaon pag-gamit sa Senior C...'),
 ];
 
-/// How long to keep the "Listening…" card visible after the speech engine
-/// reports the final result before settling it into the transcript view.
-const _settleDelay = Duration(milliseconds: 1200);
+/// How long to hold the mic screen after the final transcript lands before
+/// moving on to the answer view.
+const _settleDelay = Duration(milliseconds: 500);
 
 class VoiceAssistantScreen extends StatefulWidget {
   const VoiceAssistantScreen({super.key});
@@ -44,13 +45,13 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   final SpeechToText _speech = SpeechToText();
   bool _speechReady = false;
 
-  String _transcript = '';
-  bool _transcriptFinal = false;
   Timer? _settleTimer;
 
-  // Continuous listening: committed sentence segments + the live partial.
+  // Continuous listening: committed sentence segments only. Partial STT
+  // results are deliberately NOT shown or stored — live transcription on
+  // Android/OEM recognizers is unreliable (frozen first-word, garbled
+  // updates). We wait for final results; the LLM remains the only stream.
   final List<String> _segments = [];
-  String _live = '';
   int _silentFinals = 0;
   bool _stopRequested = false;
   Timer? _relistenTimer;
@@ -67,7 +68,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
       );
 
   String get _fullTranscript =>
-      ([..._segments, _live]).where((s) => s.trim().isNotEmpty).join(' ');
+      _segments.where((s) => s.trim().isNotEmpty).join(' ');
 
   // ---- streaming chat ----
   late final AgakApi _api = AgakApi(
@@ -111,7 +112,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     // If we caught words and the user wasn't stopping, just keep the
     // session alive by restarting the recognizer — never wipe or bail.
     if (!mounted) return;
-    if (!_stopRequested && _transcript.trim().isNotEmpty) {
+    if (!_stopRequested && _fullTranscript.isNotEmpty) {
       _scheduleRelisten();
       return;
     }
@@ -149,12 +150,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _settleTimer?.cancel();
     _stopRequested = false;
     _segments.clear();
-    _live = '';
     _silentFinals = 0;
     setState(() {
       _state = _VoiceState.listening;
-      _transcript = '';
-      _transcriptFinal = false;
     });
     await _speech.listen(
       onResult: _onRecognitionResult,
@@ -164,60 +162,34 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
 
   void _onRecognitionResult(SpeechRecognitionResult result) {
     if (!mounted) return;
+
+    // Only FINAL results matter. Partial results are deliberately ignored:
+    // live transcription on Android/OEM recognizers is unreliable (stuck
+    // first word, blank flashes), and the user asked for the transcript to
+    // appear only when the request finishes.
+    if (!result.finalResult) return;
+
     final words = result.recognizedWords.trim();
-
-    if (result.finalResult) {
-      // A final = the engine ended this utterance (silence), or the user
-      // tapped the mic. Append it to the committed segments — never lose
-      // anything we already caught.
-      final finale = words.isNotEmpty ? words : _live.trim();
-      if (finale.isNotEmpty && (_segments.isEmpty || _segments.last != finale)) {
-        _segments.add(finale);
-        _silentFinals = 0;
-      } else if (finale.isEmpty) {
-        _silentFinals++;
-      }
-      _live = '';
-      _transcript = _fullTranscript;
-      _transcriptFinal = true;
-      setState(() {});
-
-      if (_stopRequested) {
-        // User tapped the mic: settle into the question and ask AgakAI.
-        _settleTimer?.cancel();
-        _settleTimer = Timer(_settleDelay, _finalizeSession);
-      } else if (_segments.isEmpty && _silentFinals >= 5) {
-        // Nothing but silence for several engine finals: give up gently.
-        _finalizeSession();
-      } else {
-        // Many Androids ignore the silence extra and finalize after ~2-3s
-        // of pause. That must NOT end the session: seamlessly restart the
-        // recognizer and keep accumulating the user's words.
-        _scheduleRelisten();
-      }
-      return;
+    if (words.isNotEmpty && (_segments.isEmpty || _segments.last != words)) {
+      _segments.add(words);
+      _silentFinals = 0;
+    } else if (words.isEmpty) {
+      _silentFinals++;
     }
 
-    // ---- partial result ----
-    // The #1 cause of "the text clears": platforms (especially Android)
-    // send EMPTY partial events mid-session. Ignore them entirely.
-    final live = _live;
-    if (words.isEmpty || words == live) return;
-    if (live.isEmpty) {
-      _live = words;
-    } else if (words.startsWith(live) || words.contains(live)) {
-      // Cumulative platforms (iOS, most Android) resend the full text so
-      // far — just replace with the newest full version.
-      _live = words;
-    } else if (live.contains(words)) {
-      return; // subset of what we already have — no-op
+    if (_stopRequested) {
+      // User tapped the mic: settle into the question and ask AgakAI.
+      _settleTimer?.cancel();
+      _settleTimer = Timer(_settleDelay, _finalizeSession);
+    } else if (_segments.isEmpty && _silentFinals >= 5) {
+      // Nothing but silence for several engine finals: give up gently.
+      _finalizeSession();
     } else {
-      // Delta-style OEM recognizers send only the NEW words: append.
-      _live = '$live $words';
+      // Many Androids ignore the silence extra and finalize after ~2-3s
+      // of pause. That must NOT end the session: seamlessly restart the
+      // recognizer and keep accumulating the user's words.
+      _scheduleRelisten();
     }
-    _transcript = _fullTranscript;
-    _silentFinals = 0;
-    setState(() {});
   }
 
   /// Restarts the recognizer after the engine finalizes on its own, so the
@@ -230,7 +202,6 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _relistenTimer = Timer(const Duration(milliseconds: 500), () async {
       if (!mounted || _state != _VoiceState.listening || _stopRequested) return;
       if (_speech.isListening) return;
-      setState(() => _transcriptFinal = false);
       await _speech.listen(
         onResult: _onRecognitionResult,
         listenOptions: _listenOptions,
@@ -243,7 +214,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _settleTimer?.cancel();
     _relistenTimer?.cancel();
     if (!mounted || _state != _VoiceState.listening) return;
-    final question = _transcript.trim();
+    final question = _fullTranscript.trim();
     if (question.isEmpty) {
       setState(() => _state = _VoiceState.idle);
       _showNotCaught();
@@ -259,7 +230,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     if (_speech.isListening) {
       await _speech.stop(); // fires a final result → settle → ask
       // Belt-and-suspenders: if no final event arrives, don't hang.
-      _settleTimer = Timer(const Duration(milliseconds: 2500), _finalizeSession);
+      _settleTimer =
+          Timer(const Duration(milliseconds: 2500), _finalizeSession);
     } else {
       // Engine already ended on its own (silence final): settle now.
       _settleTimer = Timer(_settleDelay, _finalizeSession);
@@ -289,8 +261,22 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
 
   Future<void> _runChat(String question) async {
     final gen = ++_chatGen;
+
+    // Personalize: send the logged-in senior's profile so AgakAI greets
+    // them by name and tailors answers to their location.
+    final profile = await ProfileService.loadProfileOrNull();
+    final user = profile == null
+        ? null
+        : <String, Object?>{
+            'name': profile.name,
+            'age': profile.age,
+            'gender': profile.gender,
+            'address': profile.address,
+          };
+    if (!mounted || gen != _chatGen) return;
+
     try {
-      await for (final event in _api.chatStream(text: question)) {
+      await for (final event in _api.chatStream(text: question, user: user)) {
         if (!mounted || gen != _chatGen) return; // superseded by a newer ask
         switch (event) {
           case AgakTranscript():
@@ -348,10 +334,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     if (!mounted) return;
     setState(() {
       _state = _VoiceState.idle;
-      _transcript = '';
-      _transcriptFinal = false;
       _segments.clear();
-      _live = '';
       _stopRequested = false;
       _question = '';
       _answer = '';
@@ -386,33 +369,50 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
               title: 'Ask Anything',
               subtitle: 'Ako ang imong OSCA assistant',
               trailing: _state == _VoiceState.idle
-                  ? _CircleButton(icon: Icons.help_outline_rounded, onTap: () {})
+                  ? _CircleButton(
+                      icon: Icons.help_outline_rounded, onTap: () {})
                   : null,
             ),
             Expanded(
-              child: switch (_state) {
-                _VoiceState.idle => _IdleBody(
-                    onMicTap: _startListening,
-                    controller: _textController,
-                    onSubmit: _ask,
-                    onSuggestedTap: _ask,
-                  ),
-                _VoiceState.listening => _ListeningBody(
-                    onMicTap: _stopListening,
-                    transcript: _transcript,
-                    transcriptFinal: _transcriptFinal,
-                  ),
-                _VoiceState.answering => _AnsweringBody(
-                    onMicTap: _reset,
-                    question: _question,
-                    answer: _answer,
-                    done: _chatDone,
-                    error: _chatError,
-                    errorMessage: _chatErrorMessage,
-                    onRetry: () => _ask(_question),
-                    scrollController: _scrollController,
-                  ),
-              },
+              // Gentle crossfade between idle / listening / answering so
+              // state changes never hard-cut (calm for seniors).
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 350),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                // Without this, the switcher's Stack gives its children
+                // UNBOUNDED height during the crossfade and the scrolling
+                // bodies overflow wildly. StackFit.expand keeps every child
+                // pinned to the screen bounds.
+                layoutBuilder: (currentChild, previousChildren) => Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ...previousChildren,
+                    if (currentChild != null) currentChild,
+                  ],
+                ),
+                child: switch (_state) {
+                  _VoiceState.idle => _IdleBody(
+                      onMicTap: _startListening,
+                      controller: _textController,
+                      onSubmit: _ask,
+                      onSuggestedTap: _ask,
+                    ),
+                  _VoiceState.listening => _ListeningBody(
+                      onMicTap: _stopListening,
+                    ),
+                  _VoiceState.answering => _AnsweringBody(
+                      onMicTap: _reset,
+                      question: _question,
+                      answer: _answer,
+                      done: _chatDone,
+                      error: _chatError,
+                      errorMessage: _chatErrorMessage,
+                      onRetry: () => _ask(_question),
+                      scrollController: _scrollController,
+                    ),
+                },
+              ),
             ),
           ],
         ),
@@ -425,7 +425,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
 /// state so the primary action is visible immediately, with
 /// state-specific detail scrolling underneath instead of pushing it down.
 class _MicHero extends StatelessWidget {
-  const _MicHero({required this.onMicTap, required this.listening, required this.label});
+  const _MicHero(
+      {required this.onMicTap, required this.listening, required this.label});
 
   final VoidCallback onMicTap;
   final bool listening;
@@ -439,7 +440,16 @@ class _MicHero extends StatelessWidget {
         children: [
           _MicButton(onTap: onMicTap, listening: listening),
           const SizedBox(height: 12),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+          // Soft fade when the status label changes (silent, easy to read).
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: Text(
+              label,
+              key: ValueKey(label),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+            ),
+          ),
         ],
       ),
     );
@@ -471,10 +481,12 @@ class _IdleBody extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Try asking...',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
                 const SizedBox(height: 12),
                 for (final q in _suggestedQuestions) ...[
-                  _QuestionButton(question: q, onTap: () => onSuggestedTap(q.title)),
+                  _QuestionButton(
+                      question: q, onTap: () => onSuggestedTap(q.title)),
                   const SizedBox(height: 12),
                 ],
                 const SizedBox(height: 4),
@@ -491,68 +503,46 @@ class _IdleBody extends StatelessWidget {
 /// Live speech-to-text card: updates word-by-word while the user speaks,
 /// with a blinking cursor until the engine finalizes the utterance.
 class _ListeningBody extends StatelessWidget {
-  const _ListeningBody({
-    required this.onMicTap,
-    required this.transcript,
-    required this.transcriptFinal,
-  });
+  const _ListeningBody({required this.onMicTap});
 
   final VoidCallback onMicTap;
-  final String transcript;
-  final bool transcriptFinal;
 
   @override
   Widget build(BuildContext context) {
-    final bool hasWords = transcript.trim().isNotEmpty;
     return Column(
       children: [
         _MicHero(
           onMicTap: onMicTap,
           listening: true,
-          label: 'Listening… tap the mic to stop',
+          label: 'Listening… tap the mic when you\'re done',
         ),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.focusBlue, width: 2.5),
-                    borderRadius: BorderRadius.circular(20),
+        const Expanded(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(32, 0, 32, 40),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ListeningPulse(),
+                  SizedBox(height: 20),
+                  Text(
+                    'I\'m listening — go ahead and speak.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                      height: 1.4,
+                    ),
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _LiveDot(finalized: transcriptFinal),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          hasWords
-                              ? '$transcript${transcriptFinal ? '' : '▌'}'
-                              : 'Say something, Lola...',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.slateText,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
+                  SizedBox(height: 6),
+                  Text(
+                    'Tap the mic again when you\'re finished.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 15, color: AppColors.slateText),
                   ),
-                ),
-                const SizedBox(height: 20),
-                const Text('Try asking...',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-                const SizedBox(height: 12),
-                for (final q in _suggestedQuestions) ...[
-                  _QuestionButton(question: q, onTap: null),
-                  const SizedBox(height: 12),
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -561,34 +551,46 @@ class _ListeningBody extends StatelessWidget {
   }
 }
 
-/// Red dot that pulses while transcribing, turns solid once the final
-/// result arrives so the user can see the engine "locked in" the phrase.
-class _LiveDot extends StatelessWidget {
-  const _LiveDot({required this.finalized});
-  final bool finalized;
+/// Calm pulsing dot + soft rings while the mic is live.
+class _ListeningPulse extends StatelessWidget {
+  const _ListeningPulse();
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: TweenAnimationBuilder<double>(
-        duration: const Duration(milliseconds: 700),
-        tween: Tween(begin: 0, end: finalized ? 1 : 0),
-        builder: (context, t, _) {
-          final blinking = finalized ? 1.0 : (0.35 + 0.65 * t);
-          return Opacity(
-            opacity: blinking,
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(
-                color: finalized ? AppColors.claimGreen : AppColors.brightBlue,
-                shape: BoxShape.circle,
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 1100),
+      tween: Tween(begin: 0, end: 1),
+      builder: (context, t, child) {
+        final wide = 56 + 22 * t;
+        return SizedBox(
+          width: wide,
+          height: wide,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 56 + 22 * (1 - t),
+                height: 56 + 22 * (1 - t),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.paleBlueBg,
+                ),
               ),
-            ),
-          );
-        },
-      ),
+              Opacity(
+                opacity: 0.45,
+                child: Container(
+                  width: 70,
+                  height: 70,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.skyBlueBg2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -618,85 +620,136 @@ class _AnsweringBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final markdownStyle = MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+    final markdownStyle =
+        MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
       p: const TextStyle(fontSize: 18, color: AppColors.slateText, height: 1.6),
       listBullet: const TextStyle(fontSize: 18, color: AppColors.slateText),
-      strong: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink),
-      blockquote: const TextStyle(fontSize: 17, color: AppColors.slateText, fontStyle: FontStyle.italic),
-      h1: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.navy),
-      h2: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, color: AppColors.navy),
-      h3: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.navy),
+      strong:
+          const TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink),
+      blockquote: const TextStyle(
+          fontSize: 17,
+          color: AppColors.slateText,
+          fontStyle: FontStyle.italic),
+      h1: const TextStyle(
+          fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.navy),
+      h2: const TextStyle(
+          fontSize: 19, fontWeight: FontWeight.w700, color: AppColors.navy),
+      h3: const TextStyle(
+          fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.navy),
     );
 
     return Column(
       children: [
-        _MicHero(onMicTap: onMicTap, listening: true, label: 'Tap to Ask Again'),
+        _MicHero(
+            onMicTap: onMicTap, listening: true, label: 'Tap to Ask Again'),
         Expanded(
           child: SingleChildScrollView(
             controller: scrollController,
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            child: Container(
-              padding: const EdgeInsets.all(23),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
-                boxShadow: const [
-                  BoxShadow(
-                      color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 14)),
-                ],
+            // Calm entrance: the card fades in with a barely-there scale.
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOutCubic,
+              builder: (context, t, child) => Opacity(
+                opacity: t,
+                child: Transform.scale(scale: 0.98 + 0.02 * t, child: child),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ---- the question ----
-                  const Row(
-                    children: [
-                      Icon(Icons.mic_rounded, color: AppColors.navy, size: 20),
-                      SizedBox(width: 8),
-                      Text('Your question',
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.navy,
-                              letterSpacing: 0.3)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    question,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 18, color: AppColors.slateText, height: 1.6),
-                  ),
-                  const Divider(height: 32),
-
-                  // ---- the streaming answer ----
-                  if (error)
-                    _ErrorBox(message: errorMessage, onRetry: onRetry)
-                  else if (answer.isEmpty && !done)
-                    const _ThinkingIndicator()
-                  else ...[
-                    MarkdownBody(
-                      data: answer,
-                      styleSheet: markdownStyle,
-                      selectable: true,
+              child: Container(
+                padding: const EdgeInsets.all(23),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                  boxShadow: const [
+                    BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 14,
+                        offset: Offset(0, 14)),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ---- the question ----
+                    const Row(
+                      children: [
+                        Icon(Icons.mic_rounded,
+                            color: AppColors.navy, size: 20),
+                        SizedBox(width: 8),
+                        Text('Your question',
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.navy,
+                                letterSpacing: 0.3)),
+                      ],
                     ),
                     const SizedBox(height: 12),
-                    if (!done)
-                      const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _ThinkingDot(),
-                          SizedBox(width: 10),
-                          Text('AgakAI is answering…',
-                              style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.midBlue)),
-                        ],
+                    Text(
+                      question,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 18,
+                          color: AppColors.slateText,
+                          height: 1.6),
+                    ),
+                    const Divider(height: 32),
+
+                    // ---- the streaming answer ----
+                    if (error)
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: 1),
+                        duration: const Duration(milliseconds: 200),
+                        builder: (context, t, child) =>
+                            Opacity(opacity: t, child: child),
+                        child:
+                            _ErrorBox(message: errorMessage, onRetry: onRetry),
+                      )
+                    else if (answer.isEmpty && !done)
+                      const _ThinkingIndicator()
+                    else ...[
+                      MarkdownBody(
+                        data: answer,
+                        styleSheet: markdownStyle,
+                        selectable: true,
                       ),
+                      const SizedBox(height: 12),
+                      // The working indicator fades out on completion and is
+                      // replaced by a quiet confirmation.
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: done
+                            ? const Row(
+                                key: ValueKey('done'),
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.check_circle_outline_rounded,
+                                      color: AppColors.claimGreen, size: 16),
+                                  SizedBox(width: 8),
+                                  Text('Answer complete',
+                                      style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.claimGreen)),
+                                ],
+                              )
+                            : const Row(
+                                key: ValueKey('answering'),
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _ThinkingDot(),
+                                  SizedBox(width: 10),
+                                  Text('AgakAI is answering…',
+                                      style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.midBlue)),
+                                ],
+                              ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
@@ -721,7 +774,9 @@ class _ThinkingIndicator extends StatelessWidget {
           SizedBox(width: 10),
           Text('AgakAI is thinking…',
               style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.midBlue)),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.midBlue)),
         ],
       ),
     );
@@ -768,7 +823,8 @@ class _ErrorBox extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const Icon(Icons.error_outline_rounded, color: Color(0xFFB3261E), size: 26),
+          const Icon(Icons.error_outline_rounded,
+              color: Color(0xFFB3261E), size: 26),
           const SizedBox(height: 8),
           Text(
             message,
@@ -783,7 +839,8 @@ class _ErrorBox extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.midBlue,
               side: const BorderSide(color: AppColors.midBlue),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
           ),
         ],
@@ -810,7 +867,8 @@ class _QuestionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppColors.slateBorder, width: 2),
           boxShadow: const [
-            BoxShadow(color: Color(0x08000000), blurRadius: 4, offset: Offset(0, 4)),
+            BoxShadow(
+                color: Color(0x08000000), blurRadius: 4, offset: Offset(0, 4)),
           ],
         ),
         child: Row(
@@ -905,12 +963,24 @@ class _MicButton extends StatefulWidget {
   State<_MicButton> createState() => _MicButtonState();
 }
 
-class _MicButtonState extends State<_MicButton>
-    with SingleTickerProviderStateMixin {
+class _MicButtonState extends State<_MicButton> with TickerProviderStateMixin {
+  /// Color pulse while listening.
   late final AnimationController _controller = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
   );
+
+  /// Slow, subtle "breathing" scale at idle.
+  late final AnimationController _breathe = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.listening) _breathe.repeat(reverse: true);
+  }
 
   @override
   void didUpdateWidget(covariant _MicButton oldWidget) {
@@ -918,15 +988,19 @@ class _MicButtonState extends State<_MicButton>
     if (widget.listening == oldWidget.listening) return;
     if (widget.listening) {
       _controller.repeat(reverse: true);
+      _breathe.stop();
+      _breathe.value = 0;
     } else {
       _controller.stop();
       _controller.value = 0;
+      _breathe.repeat(reverse: true);
     }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _breathe.dispose();
     super.dispose();
   }
 
@@ -938,29 +1012,38 @@ class _MicButtonState extends State<_MicButton>
         final t = _controller.value;
         final outer = Color.lerp(AppColors.paleBlueBg, AppColors.skyBlueBg, t)!;
         final inner = Color.lerp(AppColors.brightBlue, AppColors.midBlue, t)!;
-        return InkWell(
-          customBorder: const CircleBorder(),
-          onTap: widget.onTap,
-          child: Container(
-            width: 146,
-            height: 160,
-            decoration: BoxDecoration(
-              color: outer,
-              borderRadius: BorderRadius.circular(76),
-              boxShadow: const [
-                BoxShadow(color: Color(0x40000000), blurRadius: 2, offset: Offset(0, 4)),
-              ],
-            ),
-            alignment: Alignment.center,
+        // Gentle idle breathing: ±1.5% scale, slow enough to be soothing.
+        final breath = 1 + 0.015 * _breathe.value;
+        return Transform.scale(
+          scale: breath,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: widget.onTap,
             child: Container(
-              width: 106,
-              height: 116,
+              width: 146,
+              height: 160,
               decoration: BoxDecoration(
-                color: inner,
-                borderRadius: BorderRadius.circular(55),
-                border: Border.all(color: Colors.white, width: 3.4),
+                color: outer,
+                borderRadius: BorderRadius.circular(76),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x40000000),
+                      blurRadius: 2,
+                      offset: Offset(0, 4)),
+                ],
               ),
-              child: const Icon(Icons.mic_rounded, color: Colors.white, size: 46),
+              alignment: Alignment.center,
+              child: Container(
+                width: 106,
+                height: 116,
+                decoration: BoxDecoration(
+                  color: inner,
+                  borderRadius: BorderRadius.circular(55),
+                  border: Border.all(color: Colors.white, width: 3.4),
+                ),
+                child: const Icon(Icons.mic_rounded,
+                    color: Colors.white, size: 46),
+              ),
             ),
           ),
         );
@@ -987,7 +1070,8 @@ class _CircleButton extends StatelessWidget {
           shape: BoxShape.circle,
           border: Border.all(color: const Color(0xFFE5E7EB)),
           boxShadow: const [
-            BoxShadow(color: Color(0x0D000000), blurRadius: 4, offset: Offset(0, 2)),
+            BoxShadow(
+                color: Color(0x0D000000), blurRadius: 4, offset: Offset(0, 2)),
           ],
         ),
         child: Icon(icon, size: 22, color: AppColors.ink),

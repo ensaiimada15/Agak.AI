@@ -53,8 +53,9 @@ class _LoginScreenState extends State<LoginScreen> {
         throw Exception('Invalid Senior ID or Password.');
       }
 
-      // 2. Clear any local profile state/cache if applicable
-      ProfileService.clearCache();
+      // Remember who logged in so the greeting, profile modal, benefits
+      // filter, and LLM personalization all use THIS senior's data.
+      ProfileService.setCurrentUser(userRecord['id'] as int);
 
       if (!mounted) return;
 
@@ -209,22 +210,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   child: _isLoading
                       ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  )
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
                       : const Text(
-                    'Log in',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Rubik',
-                    ),
-                  ),
+                          'Log in',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Rubik',
+                          ),
+                        ),
                 ),
               ),
 
