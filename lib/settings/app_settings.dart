@@ -1,5 +1,3 @@
-
-App settings · DART
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -115,4 +113,3 @@ class AppSettings extends ChangeNotifier {
     // without it, dark mode / language reset to defaults on app restart.
   }
 }
-

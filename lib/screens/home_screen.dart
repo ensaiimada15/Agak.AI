@@ -272,40 +272,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
 
                       // 2. Direct Dark Mode Toggle Row
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.dark_mode_outlined, color: Color(0xFF093582), size: 22),
-                            const SizedBox(width: 14),
-                            const Expanded(
-                              child: Text(
-                                'Dark Mode',
-                                style: TextStyle(
-                                  color: Color(0xFF11221D),
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  fontFamily: 'Rubik',
-                                ),
-                              ),
-                            ),
-                            Switch(
-                              value: _isDarkMode,
-                              activeColor: const Color(0xFF093582),
-                              onChanged: (val) {
-                                setState(() {
-                                  _isDarkMode = val;
-                                });
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
 
                       // 3. Direct 3-Way Inline Language Toggle Row
                       Container(
