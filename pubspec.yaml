@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   google_fonts: ^6.2.1
   cupertino_icons: ^1.0.8
+  speech_to_text: ^7.4.0
+  flutter_tts: ^4.2.5
 
 dev_dependencies:
   flutter_test:
@@ -23,3 +25,4 @@ flutter:
     - assets/images/logo.png
     - assets/images/avatar.png
     - assets/images/dashboard_hero.png
+    - assets/data/benefits.json

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart'; // <--- MANDATORY IMPORT
 import '../models/benefit.dart';
 import '../models/benefit_service.dart';
+import '../models/voice_form_field.dart';
 import '../theme/app_colors.dart';
+import 'voice_form_screen.dart';
 
 class BenefitsScreen extends StatefulWidget {
   const BenefitsScreen({
@@ -102,7 +104,14 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
                                 description:
                                     'P1,000 Monthly Cash assistance for senior residents.',
                                 icon: benefits[i].iconData,
-                                onClaimTap: () {},
+                                onClaimTap: benefits[i].iconKey == 'pension'
+                                    ? () => Navigator.of(context).push(
+                                          MaterialPageRoute(
+                                            builder: (_) => const VoiceFormScreen(
+                                                form: pensionApplicationForm),
+                                          ),
+                                        )
+                                    : () {},
                               ),
                               if (i < benefits.length - 1)
                                 const SizedBox(height: 16),

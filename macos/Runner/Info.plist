@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AgakAI uses the microphone to let you fill out forms and ask questions by voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>AgakAI uses speech recognition to understand your spoken answers.</string>
 </dict>
 </plist>
