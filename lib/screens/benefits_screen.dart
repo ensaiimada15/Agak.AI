@@ -1,91 +1,118 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // <--- MANDATORY IMPORT
+import '../models/benefit.dart';
+import '../models/benefit_service.dart';
 import '../theme/app_colors.dart';
-import '../widgets/screen_header.dart';
 
-class BenefitEntry {
-  const BenefitEntry({
-    required this.icon,
-    required this.iconBg,
-    required this.title,
-    required this.status,
-    required this.statusBg,
-    required this.statusColor,
-    required this.description,
-    required this.buttonLabel,
-    required this.buttonColor,
+class BenefitsScreen extends StatefulWidget {
+  const BenefitsScreen({
+    super.key,
+    this.onBack,
   });
-
-  final IconData icon;
-  final Color iconBg;
-  final String title;
-  final String status;
-  final Color statusBg;
-  final Color statusColor;
-  final String description;
-  final String buttonLabel;
-  final Color buttonColor;
-}
-
-const _benefits = [
-  BenefitEntry(
-    icon: Icons.account_balance_wallet_outlined,
-    iconBg: AppColors.claimGreenBg,
-    title: 'Social Pension from LGU',
-    status: 'CLAIM NOW / KUHAA NA',
-    statusBg: AppColors.claimGreenBg,
-    statusColor: AppColors.claimGreen,
-    description: 'P1,000 Monthly Cash assistance for senior residents.',
-    buttonLabel: 'Claim Pension (Pindota)',
-    buttonColor: AppColors.claimGreen,
-  ),
-  BenefitEntry(
-    icon: Icons.local_hospital_outlined,
-    iconBg: AppColors.forestSoft,
-    title: 'Priority Healthcare Access',
-    status: 'Next schedule: Friday, 8am',
-    statusBg: AppColors.forestSoft,
-    statusColor: AppColors.forest,
-    description: 'Free Vaccines & Checkups at Dumaguete Health Office.',
-    buttonLabel: 'View Schedule (Tan-awa)',
-    buttonColor: AppColors.forest,
-  ),
-  BenefitEntry(
-    icon: Icons.confirmation_number_outlined,
-    iconBg: AppColors.orangeBg2,
-    title: 'Free Robinsons Movie Ticket',
-    status: 'Claim at Robinsons Place',
-    statusBg: AppColors.orangeBg2,
-    statusColor: AppColors.orange,
-    description: 'Free cinema access on Monday and Tuesday mornings.',
-    buttonLabel: 'How to Claim (Unsaon)',
-    buttonColor: AppColors.orange,
-  ),
-];
-
-class BenefitsScreen extends StatelessWidget {
-  const BenefitsScreen({super.key, this.onBack});
 
   final VoidCallback? onBack;
 
   @override
+  State<BenefitsScreen> createState() => _BenefitsScreenState();
+}
+
+class _BenefitsScreenState extends State<BenefitsScreen> {
+  late final Future<List<Benefit>> _benefitsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _benefitsFuture = BenefitService.loadBenefits();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.forestBg,
+      backgroundColor: AppColors.pageBg,
       body: SafeArea(
-        bottom: false,
         child: Column(
           children: [
-            ForestScreenHeader(
-              title: 'My Benefits',
-              subtitle: 'Akong mga Benepisyo ug Pribilehiyo',
-              onBack: onBack,
-            ),
+            _HeaderBar(onBack: widget.onBack),
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(20),
-                itemCount: _benefits.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 16),
-                itemBuilder: (context, i) => _BenefitCard(entry: _benefits[i]),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFFD2E2FF),
+                            width: 2,
+                          ),
+                        ),
+                        child: const Text(
+                          '🇵🇭 Bisaya / Eng',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 12,
+                            fontFamily: 'Rubik',
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FutureBuilder<List<Benefit>>(
+                      future: _benefitsFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 40),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+
+                        if (snapshot.hasError) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Text(
+                              'Error loading benefits: ${snapshot.error}',
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontSize: 13,
+                              ),
+                            ),
+                          );
+                        }
+
+                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                          return const Text('No available benefits at this time.');
+                        }
+
+                        final benefits = snapshot.data!;
+
+                        return Column(
+                          children: [
+                            for (int i = 0; i < benefits.length; i++) ...[
+                              _BenefitActionCard(
+                                title: benefits[i].title,
+                                subtitle: 'CLAIM NOW / KUHAA NA',
+                                description:
+                                    'P1,000 Monthly Cash assistance for senior residents.',
+                                icon: benefits[i].iconData,
+                                onClaimTap: () {},
+                              ),
+                              if (i < benefits.length - 1)
+                                const SizedBox(height: 16),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -95,87 +122,181 @@ class BenefitsScreen extends StatelessWidget {
   }
 }
 
-class _BenefitCard extends StatelessWidget {
-  const _BenefitCard({required this.entry});
+class _HeaderBar extends StatelessWidget {
+  const _HeaderBar({this.onBack});
 
-  final BenefitEntry entry;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: Color(0xFFF3E4D9),
+            width: 1,
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(
+              Icons.arrow_back,
+              color: Color(0xFF0F172A),
+              size: 24,
+            ),
+            onPressed: onBack ?? () => Navigator.of(context).maybePop(),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Text(
+                  'My Benefits',
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 24,
+                    fontFamily: 'LINE Seed Sans',
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Akong mga Benepisyo ug Pribilehiyo',
+                  style: TextStyle(
+                    color: Color(0xFF093582),
+                    fontSize: 13,
+                    fontFamily: 'LINE Seed Sans',
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BenefitActionCard extends StatelessWidget {
+  const _BenefitActionCard({
+    required this.title,
+    required this.subtitle,
+    required this.description,
+    required this.icon,
+    required this.onClaimTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final String description;
+  final IconData icon;
+  final VoidCallback onClaimTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.forestBorder, width: 2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 2),
         boxShadow: const [
-          BoxShadow(color: Color(0x140B4D3A), blurRadius: 4, offset: Offset(0, 4)),
+          BoxShadow(
+            color: Color(0x080F172A),
+            blurRadius: 8,
+            offset: Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: entry.iconBg,
+                  color: const Color(0xFFD2ECFF),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(entry.icon, color: entry.statusColor, size: 26),
+                child: Icon(
+                  icon,
+                  color: const Color(0xFF0284C7),
+                  size: 26,
+                ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(entry.title,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 18,
-                            color: AppColors.forestDark)),
-                    const SizedBox(height: 2),
-                    Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: entry.statusBg,
-                        borderRadius: BorderRadius.circular(6),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Color(0xFF11221D),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        fontFamily: 'Rubik',
                       ),
-                      child: Text(entry.status,
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              color: entry.statusColor)),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFF475569),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        fontFamily: 'Rubik',
+                      ),
                     ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(entry.description,
-              style: const TextStyle(
-                  fontSize: 14, color: AppColors.forestBody, height: 1.4)),
+          const SizedBox(height: 12),
+          Text(
+            description,
+            style: const TextStyle(
+              color: Color(0xFF334D47),
+              fontSize: 14,
+              fontFamily: 'Rubik',
+              fontWeight: FontWeight.w500,
+              height: 1.4,
+            ),
+          ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
-            height: 54,
+            height: 50,
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: onClaimTap,
               style: ElevatedButton.styleFrom(
-                backgroundColor: entry.buttonColor,
-                shape:
-                    RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                backgroundColor: const Color(0xFF093582),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
-              child: Text(entry.buttonLabel,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                      color: Colors.white)),
+              child: const Text(
+                'Claim Pension (Pindota)',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontFamily: 'Rubik',
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
           ),
         ],

@@ -23,7 +23,6 @@ class AppBottomNav extends StatelessWidget {
     (icon: Icons.home_rounded, labelTop: 'Home', labelBottom: 'Balay'),
     (icon: Icons.military_tech_rounded, labelTop: 'Benefits', labelBottom: null),
     (icon: Icons.mic_rounded, labelTop: 'Voice', labelBottom: 'Tingog'),
-    (icon: Icons.chat_bubble_rounded, labelTop: 'Chat', labelBottom: 'Chika'),
   ];
 
   @override
