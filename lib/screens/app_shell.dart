@@ -23,6 +23,7 @@ class _AppShellState extends State<AppShell> {
       HomeScreen(
         onOpenVoiceAssistant: () => _goTo(2),
         onOpenBenefits: () => _goTo(1),
+        onViewAllBenefits: () => _goTo(1),
       ),
       BenefitsScreen(onBack: () => _goTo(0)),
       const VoiceAssistantScreen(),
