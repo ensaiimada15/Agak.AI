@@ -84,35 +84,60 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   }
 }
 
+/// Pins the mic button + status label at the top of every voice-assistant
+/// state so the primary action is visible immediately, with
+/// state-specific detail scrolling underneath instead of pushing it down.
+class _MicHero extends StatelessWidget {
+  const _MicHero({required this.onMicTap, required this.listening, required this.label});
+
+  final VoidCallback onMicTap;
+  final bool listening;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 4),
+      child: Column(
+        children: [
+          _MicButton(onTap: onMicTap, listening: listening),
+          const SizedBox(height: 12),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+        ],
+      ),
+    );
+  }
+}
+
 class _IdleBody extends StatelessWidget {
   const _IdleBody({required this.onMicTap});
   final VoidCallback onMicTap;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Try asking...',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-          const SizedBox(height: 12),
-          for (final q in _suggestedQuestions) ...[
-            _QuestionButton(question: q),
-            const SizedBox(height: 12),
-          ],
-          const SizedBox(height: 12),
-          _KeyboardInputField(text: 'Type here instead...'),
-          const SizedBox(height: 40),
-          Center(child: _MicButton(onTap: onMicTap, listening: false)),
-          const SizedBox(height: 16),
-          const Center(
-            child: Text('Tap to Speak',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+    return Column(
+      children: [
+        _MicHero(onMicTap: onMicTap, listening: false, label: 'Tap to Speak'),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Try asking...',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                const SizedBox(height: 12),
+                for (final q in _suggestedQuestions) ...[
+                  _QuestionButton(question: q),
+                  const SizedBox(height: 12),
+                ],
+                const SizedBox(height: 4),
+                _KeyboardInputField(text: 'Type here instead...'),
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -123,56 +148,57 @@ class _ListeningBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Try asking...',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-          const SizedBox(height: 12),
-          for (final q in _suggestedQuestions) ...[
-            _QuestionButton(question: q),
-            const SizedBox(height: 12),
-          ],
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border.all(color: AppColors.focusBlue, width: 2.5),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
+    return Column(
+      children: [
+        _MicHero(onMicTap: onMicTap, listening: true, label: 'Listening...'),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(_sampleTranscript,
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.slateText)),
-                ),
-                const SizedBox(width: 12),
                 Container(
-                  width: 40,
-                  height: 40,
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: AppColors.paleBlueBg,
-                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.focusBlue, width: 2.5),
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(Icons.arrow_forward_rounded,
-                      color: AppColors.brightBlue, size: 20),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(_sampleTranscript,
+                            style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.slateText)),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.paleBlueBg,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.arrow_forward_rounded,
+                            color: AppColors.brightBlue, size: 20),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 20),
+                const Text('Try asking...',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                const SizedBox(height: 12),
+                for (final q in _suggestedQuestions) ...[
+                  _QuestionButton(question: q),
+                  const SizedBox(height: 12),
+                ],
               ],
             ),
           ),
-          const SizedBox(height: 40),
-          Center(child: _MicButton(onTap: onMicTap, listening: true)),
-          const SizedBox(height: 16),
-          const Center(
-            child: Text('Listening...',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -183,43 +209,41 @@ class _AnsweringBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 36, 24, 24),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(23),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: const Color(0xFFE5E7EB)),
-              boxShadow: const [
-                BoxShadow(
-                    color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 14)),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  _sampleAnswer,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 18, color: AppColors.slateText, height: 1.6),
-                ),
-                const SizedBox(height: 8),
-                const Icon(Icons.auto_awesome_rounded,
-                    color: AppColors.navy, size: 20),
-              ],
+    return Column(
+      children: [
+        _MicHero(onMicTap: onMicTap, listening: true, label: 'Tap to Ask Again'),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Container(
+              padding: const EdgeInsets.all(23),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x12000000), blurRadius: 14, offset: Offset(0, 14)),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _sampleAnswer,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 18, color: AppColors.slateText, height: 1.6),
+                  ),
+                  const SizedBox(height: 8),
+                  const Icon(Icons.auto_awesome_rounded,
+                      color: AppColors.navy, size: 20),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 56),
-          _MicButton(onTap: onMicTap, listening: true),
-          const SizedBox(height: 16),
-          const Text('Listening...',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
