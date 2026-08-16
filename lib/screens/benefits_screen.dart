@@ -1,74 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-
-class Benefit {
-  const Benefit({
-    required this.id,
-    required this.title,
-    required this.date,
-    required this.location,
-    required this.iconKey,
-    required this.category,
-    required this.description,
-  });
-
-  final String id;
-  final String title;
-  final String date;
-  final String location;
-  final String iconKey;
-  final String category;
-  final String description;
-
-  IconData get iconData {
-    switch (iconKey.toLowerCase()) {
-      case 'pension':
-      case 'cash':
-      case 'money':
-        return Icons.payments_rounded;
-      case 'medical':
-      case 'hospital':
-      case 'health':
-        return Icons.health_and_safety_rounded;
-      case 'food':
-      case 'grocery':
-        return Icons.local_dining_rounded;
-      case 'transport':
-      case 'bus':
-      case 'fare':
-        return Icons.directions_bus_filled_rounded;
-      default:
-        return Icons.card_membership_rounded;
-    }
-  }
-
-  factory Benefit.fromJson(Map<String, dynamic> json) {
-    // Gracefully handle combined 'dateAndLocation' or separate 'date' and 'location'
-    final rawDate = json['date'] as String? ?? '';
-    final rawLocation = json['location'] as String? ?? '';
-    final combined = json['dateAndLocation'] as String? ?? '';
-
-    String parsedDate = rawDate;
-    String parsedLocation = rawLocation;
-
-    if (combined.isNotEmpty && parsedDate.isEmpty && parsedLocation.isEmpty) {
-      final parts = combined.split('•');
-      parsedDate = parts.isNotEmpty ? parts[0].trim() : combined;
-      parsedLocation = parts.length > 1 ? parts[1].trim() : '';
-    }
-
-    return Benefit(
-      id: json['id'] as String? ?? '',
-      title: json['title'] as String? ?? '',
-      date: parsedDate,
-      location: parsedLocation,
-      iconKey: json['iconKey'] as String? ?? '',
-      category: json['category'] as String? ?? 'General',
-      description: json['description'] as String? ?? '',
-    );
-  }
-}
+import '../models/benefit.dart';
+import '../models/benefit_service.dart';
 
 class BenefitsScreen extends StatefulWidget {
   final VoidCallback? onBack;
@@ -85,16 +17,7 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
   @override
   void initState() {
     super.initState();
-    _benefitsFuture = _loadBenefitsJson();
-  }
-
-  Future<List<Benefit>> _loadBenefitsJson() async {
-    final String response =
-        await rootBundle.loadString('assets/data/benefits.json');
-    final List<dynamic> data = json.decode(response) as List<dynamic>;
-    return data
-        .map((item) => Benefit.fromJson(item as Map<String, dynamic>))
-        .toList();
+    _benefitsFuture = BenefitService.loadBenefits();
   }
 
   @override
@@ -196,8 +119,23 @@ class BenefitCard extends StatelessWidget {
 
   const BenefitCard({super.key, required this.benefit});
 
+  /// benefit.dart stores date + location as a single combined
+  /// `dateAndLocation` string (e.g. "Jan 15, 2026 • City Hall").
+  /// Split it back apart here so the two-row layout below is unchanged.
+  List<String> get _dateAndLocationParts {
+    return benefit.dateAndLocation
+        .split('•')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final parts = _dateAndLocationParts;
+    final date = parts.isNotEmpty ? parts[0] : '';
+    final location = parts.length > 1 ? parts[1] : '';
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -276,16 +214,16 @@ class BenefitCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (benefit.date.isNotEmpty)
+                if (date.isNotEmpty)
                   _MetaRow(
                     icon: Icons.calendar_today_rounded,
-                    label: benefit.date,
+                    label: date,
                   ),
-                if (benefit.location.isNotEmpty) ...[
-                  if (benefit.date.isNotEmpty) const SizedBox(height: 8),
+                if (location.isNotEmpty) ...[
+                  if (date.isNotEmpty) const SizedBox(height: 8),
                   _MetaRow(
                     icon: Icons.location_on_rounded,
-                    label: benefit.location,
+                    label: location,
                   ),
                 ],
                 if (benefit.description.isNotEmpty) ...[
