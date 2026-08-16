@@ -2,54 +2,47 @@ import 'package:flutter/material.dart';
 
 class Benefit {
   final String title;
-  final String date;
-  final String location;
-  final String iconKey;
+  final String? description;
+  final String? date;
+  final String? location;
+  final IconData iconData;
 
-  const Benefit({
+  Benefit({
     required this.title,
-    required this.date,
-    required this.location,
-    required this.iconKey,
+    this.description,
+    this.date,
+    this.location,
+    required this.iconData,
   });
 
-  String get dateAndLocation => '$date, $location';
+  // Combines date and location for home_screen.dart
+  String get dateAndLocation {
+    final formattedDate = date ?? 'Available Daily';
+    final formattedLocation = location ?? 'Barangay Hall';
+    return '$formattedDate • $formattedLocation';
+  }
 
+  // Parses JSON data safely
   factory Benefit.fromJson(Map<String, dynamic> json) {
     return Benefit(
-      title: json['title'] ?? '',
-      date: json['date'] ?? '',
-      location: json['location'] ?? '',
-      iconKey: json['iconKey'] ?? 'default',
+      title: json['title'] as String? ?? 'Unnamed Benefit',
+      description: json['description'] as String? ??
+          'Cash assistance and community welfare program.',
+      date: json['date'] as String? ?? 'Available Daily',
+      location: json['location'] as String? ?? 'Barangay Hall',
+      iconData: _getIconFromName(json['icon'] as String?),
     );
   }
 
-  // Predefined icon registry (10+ common types)
-  IconData get iconData {
-    switch (iconKey) {
-      case 'pension':
-      case 'payment':
+  // Maps JSON string names to actual Flutter Icons
+  static IconData _getIconFromName(String? iconName) {
+    switch (iconName) {
+      case 'medical':
+        return Icons.medical_services_outlined;
+      case 'cash':
         return Icons.payments_outlined;
-      case 'health':
-      case 'hospital':
-        return Icons.local_hospital_outlined;
       case 'food':
         return Icons.restaurant_outlined;
-      case 'education':
-        return Icons.school_outlined;
-      case 'transport':
-        return Icons.directions_bus_outlined;
-      case 'housing':
-        return Icons.home_work_outlined;
-      case 'shopping':
-        return Icons.shopping_bag_outlined;
-      case 'event':
-        return Icons.event_outlined;
-      case 'shield':
-      case 'insurance':
-        return Icons.verified_user_outlined;
-      case 'work':
-        return Icons.work_outline;
       default:
         return Icons.card_giftcard_outlined;
     }
