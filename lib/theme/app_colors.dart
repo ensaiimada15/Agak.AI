@@ -15,6 +15,9 @@ class AppColors {
   static const orange = Color(0xFFD35400);
   static const orangeBg2 = Color(0xFFFBEFE6);
 
+  // Web / wide-viewport backdrop behind the centered app frame
+  static const webBackdrop = Color(0xFFE3E7EE);
+
   // Neutrals
   static const pageBg = Color(0xFFFAFAFA);
   static const fieldBg = Color(0xFFEDEDED);

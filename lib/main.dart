@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
+import 'widgets/responsive_frame.dart';
 
 void main() {
   runApp(const AgakAIApp());
@@ -15,6 +16,7 @@ class AgakAIApp extends StatelessWidget {
       title: 'AgakAI',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
+      builder: (context, child) => ResponsiveFrame(child: child!),
       home: const LoginScreen(),
     );
   }

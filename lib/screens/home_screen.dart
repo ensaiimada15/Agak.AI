@@ -1,6 +1,51 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
+class _Category {
+  const _Category(this.label, this.icon, this.color, this.bg);
+  final String label;
+  final IconData icon;
+  final Color color;
+  final Color bg;
+}
+
+const _categories = [
+  _Category('Repair', Icons.handyman_outlined, AppColors.orange, AppColors.orangeBg),
+  _Category('Cleaning', Icons.cleaning_services_outlined, AppColors.dashboardGreen,
+      AppColors.dashboardAccentBg),
+  _Category('Caregiving', Icons.favorite_outline, AppColors.navy, AppColors.skyBlueBg),
+  _Category('Delivery', Icons.local_shipping_outlined, AppColors.brightBlue,
+      AppColors.paleBlueBg),
+  _Category('Gardening', Icons.grass_outlined, AppColors.forest, AppColors.forestSoft),
+  _Category('Tutoring', Icons.school_outlined, AppColors.claimGreen, AppColors.claimGreenBg),
+];
+
+class _Job {
+  const _Job(this.title, this.category, this.price, this.location, this.rating,
+      this.reviews, this.icon, this.color, this.bg, {this.recommended = false});
+  final String title;
+  final String category;
+  final String price;
+  final String location;
+  final double rating;
+  final int reviews;
+  final IconData icon;
+  final Color color;
+  final Color bg;
+  final bool recommended;
+}
+
+const _jobs = [
+  _Job('House Cleaning Helper', 'Cleaning', '₱350 - ₱500 / visit', 'Rovira Road, Dumaguete',
+      4.8, 23, Icons.cleaning_services_outlined, AppColors.dashboardGreen,
+      AppColors.dashboardAccentBg,
+      recommended: true),
+  _Job('Elderly Companion Care', 'Caregiving', '₱400 / day', 'Piapi, Dumaguete', 4.9, 41,
+      Icons.favorite_outline, AppColors.navy, AppColors.skyBlueBg),
+  _Job('Garden Maintenance', 'Gardening', '₱250 - ₱450 / visit', 'Bantayan, Dumaguete', 4.6,
+      15, Icons.grass_outlined, AppColors.forest, AppColors.forestSoft),
+];
+
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
     super.key,
@@ -21,23 +66,20 @@ class HomeScreen extends StatelessWidget {
           children: [
             _DashboardHeader(onSearchTap: onOpenVoiceAssistant, onExplore: onOpenBenefits),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const _SectionHeader(title: 'Service Categories'),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 16),
                   const _ServiceCategoriesGrid(),
-                  const SizedBox(height: 24),
-                  const _SectionHeader(title: 'Hiring'),
-                  const SizedBox(height: 14),
-                  const _JobCard(
-                    title: 'Something',
-                    price: '12\$ - 30\$',
-                    location: 'Rovira Road, 912..',
-                    rating: '4.5',
-                    reviews: '(23 Reviews)',
-                  ),
+                  const SizedBox(height: 28),
+                  const _SectionHeader(title: 'Jobs Near You'),
+                  const SizedBox(height: 16),
+                  for (final job in _jobs) ...[
+                    _JobCard(job: job),
+                    if (job != _jobs.last) const SizedBox(height: 12),
+                  ],
                 ],
               ),
             ),
@@ -209,34 +251,46 @@ class _ServiceCategoriesGrid extends StatelessWidget {
       crossAxisCount: 3,
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
-      childAspectRatio: 94 / 46,
-      children: List.generate(
-        6,
-        (_) => Container(
-          decoration: BoxDecoration(
-            color: AppColors.placeholderGrey,
-            borderRadius: BorderRadius.circular(6),
+      childAspectRatio: 94 / 78,
+      children: [
+        for (final category in _categories)
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFEDEDED)),
+              boxShadow: const [
+                BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2)),
+              ],
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: category.bg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(category.icon, size: 18, color: category.color),
+                ),
+                const SizedBox(height: 8),
+                Text(category.label,
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.ink)),
+              ],
+            ),
           ),
-        ),
-      ),
+      ],
     );
   }
 }
 
 class _JobCard extends StatelessWidget {
-  const _JobCard({
-    required this.title,
-    required this.price,
-    required this.location,
-    required this.rating,
-    required this.reviews,
-  });
+  const _JobCard({required this.job});
 
-  final String title;
-  final String price;
-  final String location;
-  final String rating;
-  final String reviews;
+  final _Job job;
 
   @override
   Widget build(BuildContext context) {
@@ -244,60 +298,84 @@ class _JobCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFEDEDED)),
         boxShadow: const [
-          BoxShadow(color: Color(0x40000000), blurRadius: 4, offset: Offset(0, 4)),
+          BoxShadow(color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 4)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            height: 112,
+            height: 100,
             width: double.infinity,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.imagePlaceholderBg,
-              borderRadius: BorderRadius.circular(6),
+              color: job.bg,
+              borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.image_outlined, size: 24, color: AppColors.slateText),
+            child: Icon(job.icon, size: 32, color: job.color),
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.ink)),
+              Expanded(
+                child: Text(job.title,
+                    style: const TextStyle(
+                        fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.ink)),
+              ),
               Row(
                 children: [
-                  Text('$rating ', style: const TextStyle(fontSize: 14, color: AppColors.ink)),
-                  const Icon(Icons.star, size: 14, color: Colors.amber),
+                  Text(job.rating.toStringAsFixed(1),
+                      style: const TextStyle(fontSize: 13, color: AppColors.ink)),
+                  const SizedBox(width: 2),
+                  const Icon(Icons.star_rounded, size: 16, color: Colors.amber),
                   const SizedBox(width: 4),
-                  Text(reviews, style: const TextStyle(fontSize: 14, color: AppColors.ink)),
+                  Text('(${job.reviews})',
+                      style: const TextStyle(fontSize: 13, color: AppColors.slateText)),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(price, style: const TextStyle(fontSize: 14, color: AppColors.ink)),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
+          Text(job.price,
+              style: const TextStyle(
+                  fontSize: 13.5, fontWeight: FontWeight.w600, color: AppColors.dashboardGreen)),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(location, style: const TextStyle(fontSize: 14, color: AppColors.ink)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.dashboardAccentBg,
-                  borderRadius: BorderRadius.circular(6),
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined,
+                        size: 14, color: AppColors.slateText),
+                    const SizedBox(width: 2),
+                    Expanded(
+                      child: Text(job.location,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12.5, color: AppColors.slateText)),
+                    ),
+                  ],
                 ),
-                child: const Text('AI Recommend!',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.dashboardAccent)),
               ),
+              if (job.recommended)
+                Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.dashboardAccentBg,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text('AI Recommend!',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.dashboardAccent)),
+                ),
             ],
           ),
         ],

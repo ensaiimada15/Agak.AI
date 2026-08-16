@@ -36,12 +36,18 @@ class _LoginScreenState extends State<LoginScreen> {
       backgroundColor: AppColors.pageBg,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 43),
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
             children: [
-              const SizedBox(height: 60),
-              Image.asset('assets/images/logo.png', height: 175),
-              const SizedBox(height: 40),
+              const SizedBox(height: 56),
+              Image.asset('assets/images/logo.png', height: 150),
+              const SizedBox(height: 8),
+              Text('Welcome back',
+                  style: AppTheme.headline(size: 20, color: AppColors.ink)),
+              const SizedBox(height: 4),
+              const Text('Log in to continue',
+                  style: TextStyle(fontSize: 13.5, color: Colors.black54)),
+              const SizedBox(height: 32),
               _LoginField(
                 controller: _emailController,
                 hint: 'Email',
