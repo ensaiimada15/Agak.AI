@@ -202,6 +202,7 @@ serve(async (req) => {
             const queue = makeQueue<string>()
             const ttsDone = (async () => {
               const CHUNK_BYTES = 16 * 1024
+              let sentenceIdx = 0
               while (true) {
                 const sentence = await queue.next()
                 if (sentence === null) break
@@ -217,7 +218,14 @@ serve(async (req) => {
                     merged.set(c, off)
                     off += c.length
                   }
-                  send("audio", { chunk_base64: bytesToBase64(merged), mime: "audio/mpeg" })
+                  // `sentence` groups chunks that belong to ONE mp3 (each
+                  // TTS sentence is its own encode). The client uses it to
+                  // start a fresh decoder session per sentence.
+                  send("audio", {
+                    chunk_base64: bytesToBase64(merged),
+                    mime: "audio/mpeg",
+                    sentence: sentenceIdx,
+                  })
                   pending.length = 0
                   pendingLen = 0
                 }
@@ -229,6 +237,7 @@ serve(async (req) => {
                   if (pendingLen >= CHUNK_BYTES) emit()
                 }
                 emit()
+                sentenceIdx++
               }
             })()
 

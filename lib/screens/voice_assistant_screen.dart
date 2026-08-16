@@ -7,6 +7,7 @@ import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import '../services/agakai_api.dart';
 import '../services/app_config.dart';
+import '../services/live_tts_player.dart';
 import '../theme/app_colors.dart';
 import '../widgets/screen_header.dart';
 
@@ -46,6 +47,27 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   bool _transcriptFinal = false;
   Timer? _settleTimer;
 
+  // Continuous listening: committed sentence segments + the live partial.
+  final List<String> _segments = [];
+  String _live = '';
+  int _silentFinals = 0;
+  bool _stopRequested = false;
+  Timer? _relistenTimer;
+
+  SpeechListenOptions get _listenOptions => SpeechListenOptions(
+        listenFor: const Duration(minutes: 2),
+        // pauseFor maps to EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS
+        // on Android, but many devices ignore it and finalize after ~2-3s
+        // of silence anyway. That's fine: `_scheduleRelisten` seamlessly
+        // restarts the recognizer, so the mic stays open until the user taps.
+        pauseFor: const Duration(minutes: 1),
+        // Better long-form behavior on iOS (sentences, not commands).
+        listenMode: ListenMode.dictation,
+      );
+
+  String get _fullTranscript =>
+      ([..._segments, _live]).where((s) => s.trim().isNotEmpty).join(' ');
+
   // ---- streaming chat ----
   late final AgakApi _api = AgakApi(
     supabaseUrl: AppConfig.supabaseUrl,
@@ -62,6 +84,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
 
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
+  // ---- streaming voice playback (step: LLM text + TTS voice) ----
+  final LiveTtsPlayer _tts = LiveTtsPlayer();
 
   @override
   void initState() {
@@ -80,13 +105,12 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   // ------------------------------------------------------------ speech ----
 
   void _onSpeechError(SpeechRecognitionError error) {
-    // Android fires lots of "benign" errors mid-session on pauses/noise
-    // (no_match, speech_timeout, network…), all marked permanent. If we
-    // already caught some words, treat it as "end of utterance" and KEEP
-    // the transcript — never wipe what the user already said.
+    // Android fires lots of "benign" permanent errors on pauses/noise.
+    // If we caught words and the user wasn't stopping, just keep the
+    // session alive by restarting the recognizer — never wipe or bail.
     if (!mounted) return;
-    if (_transcript.trim().isNotEmpty) {
-      _finalizeSession();
+    if (!_stopRequested && _transcript.trim().isNotEmpty) {
+      _scheduleRelisten();
       return;
     }
     if (_state == _VoiceState.listening) {
@@ -119,7 +143,12 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
       _showSttUnavailable();
       return;
     }
+    _relistenTimer?.cancel();
     _settleTimer?.cancel();
+    _stopRequested = false;
+    _segments.clear();
+    _live = '';
+    _silentFinals = 0;
     setState(() {
       _state = _VoiceState.listening;
       _transcript = '';
@@ -127,12 +156,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     });
     await _speech.listen(
       onResult: _onRecognitionResult,
-      listenOptions: SpeechListenOptions(
-        listenFor: const Duration(minutes: 2),
-        pauseFor: const Duration(seconds: 5),
-        // Better long-form behavior on iOS (sentences, not commands).
-        listenMode: ListenMode.dictation,
-      ),
+      listenOptions: _listenOptions,
     );
   }
 
@@ -141,42 +165,79 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     final words = result.recognizedWords.trim();
 
     if (result.finalResult) {
-      // A final can arrive with empty text on some devices (or right after
-      // a blank partial). Never let it wipe what we already caught:
-      // keep the last live text as the fallback.
-      if (words.isNotEmpty) _transcript = words;
+      // A final = the engine ended this utterance (silence), or the user
+      // tapped the mic. Append it to the committed segments — never lose
+      // anything we already caught.
+      final finale = words.isNotEmpty ? words : _live.trim();
+      if (finale.isNotEmpty && (_segments.isEmpty || _segments.last != finale)) {
+        _segments.add(finale);
+        _silentFinals = 0;
+      } else if (finale.isEmpty) {
+        _silentFinals++;
+      }
+      _live = '';
+      _transcript = _fullTranscript;
       _transcriptFinal = true;
       setState(() {});
-      // Let the live card show the finalized phrase for a beat, then settle.
-      _settleTimer?.cancel();
-      _settleTimer = Timer(_settleDelay, _finalizeSession);
+
+      if (_stopRequested) {
+        // User tapped the mic: settle into the question and ask AgakAI.
+        _settleTimer?.cancel();
+        _settleTimer = Timer(_settleDelay, _finalizeSession);
+      } else if (_segments.isEmpty && _silentFinals >= 5) {
+        // Nothing but silence for several engine finals: give up gently.
+        _finalizeSession();
+      } else {
+        // Many Androids ignore the silence extra and finalize after ~2-3s
+        // of pause. That must NOT end the session: seamlessly restart the
+        // recognizer and keep accumulating the user's words.
+        _scheduleRelisten();
+      }
       return;
     }
 
     // ---- partial result ----
     // The #1 cause of "the text clears": platforms (especially Android)
     // send EMPTY partial events mid-session. Ignore them entirely.
-    if (words.isEmpty || words == _transcript) return;
-
-    final current = _transcript;
-    if (current.isEmpty) {
-      _transcript = words;
-    } else if (words.startsWith(current) || words.contains(current)) {
+    final live = _live;
+    if (words.isEmpty || words == live) return;
+    if (live.isEmpty) {
+      _live = words;
+    } else if (words.startsWith(live) || words.contains(live)) {
       // Cumulative platforms (iOS, most Android) resend the full text so
       // far — just replace with the newest full version.
-      _transcript = words;
-    } else if (current.contains(words)) {
+      _live = words;
+    } else if (live.contains(words)) {
       return; // subset of what we already have — no-op
     } else {
       // Delta-style OEM recognizers send only the NEW words: append.
-      _transcript = '$current $words';
+      _live = '$live $words';
     }
+    _transcript = _fullTranscript;
+    _silentFinals = 0;
     setState(() {});
+  }
+
+  /// Restarts the recognizer after the engine finalizes on its own, so the
+  /// mic effectively stays open until the user taps it. The committed
+  /// segments keep the full transcript across restarts.
+  void _scheduleRelisten() {
+    _relistenTimer?.cancel();
+    _relistenTimer = Timer(const Duration(milliseconds: 800), () async {
+      if (!mounted || _state != _VoiceState.listening || _stopRequested) return;
+      if (_speech.isListening) return;
+      setState(() => _transcriptFinal = false);
+      await _speech.listen(
+        onResult: _onRecognitionResult,
+        listenOptions: _listenOptions,
+      );
+    });
   }
 
   /// Settles the listening session: asks AgakAI with the captured question.
   void _finalizeSession() {
     _settleTimer?.cancel();
+    _relistenTimer?.cancel();
     if (!mounted || _state != _VoiceState.listening) return;
     final question = _transcript.trim();
     if (question.isEmpty) {
@@ -188,11 +249,17 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   }
 
   Future<void> _stopListening() async {
+    _stopRequested = true;
+    _relistenTimer?.cancel();
     _settleTimer?.cancel();
-    if (_speech.isListening) await _speech.stop(); // fires a final result
-    // Belt-and-suspenders: if the platform goes silent after stop() with no
-    // final event, finalize anyway so the UI never hangs on "Listening…".
-    _settleTimer = Timer(const Duration(milliseconds: 2500), _finalizeSession);
+    if (_speech.isListening) {
+      await _speech.stop(); // fires a final result → settle → ask
+      // Belt-and-suspenders: if no final event arrives, don't hang.
+      _settleTimer = Timer(const Duration(milliseconds: 2500), _finalizeSession);
+    } else {
+      // Engine already ended on its own (silence final): settle now.
+      _settleTimer = Timer(_settleDelay, _finalizeSession);
+    }
   }
 
   // ------------------------------------------------------------ chat ------
@@ -201,6 +268,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void _ask(String question) {
     final q = question.trim();
     if (q.isEmpty) return;
+    // Barge-in: cut off any speech from a previous session before moving on.
+    unawaited(_tts.stop());
     setState(() {
       _state = _VoiceState.answering;
       _question = q;
@@ -218,26 +287,34 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     try {
       await for (final event in _api.chatStream(text: question)) {
         if (!mounted || gen != _chatGen) return; // superseded by a newer ask
-        setState(() {
-          switch (event) {
-            case AgakTranscript():
-              _question = event.question;
-            case AgakDelta():
-              _answer += event.text;
-            case AgakAudio():
-              break; // voice chunk playback is the next step
-            case AgakDone():
+        switch (event) {
+          case AgakTranscript():
+            setState(() => _question = event.question);
+          case AgakDelta():
+            setState(() => _answer += event.text);
+            if (_answer.length % 6 == 0) _scrollToBottom();
+          case AgakAudio():
+            // Feed the mp3 chunk to the player immediately; it starts
+            // speaking as soon as the first chunk arrives. `sentence` groups
+            // chunks into one clean decoder session per TTS sentence.
+            unawaited(_tts.addChunk(event.chunk, sentence: event.sentence));
+          case AgakDone():
+            setState(() {
               _answer = event.answer;
               _chatDone = true;
-            case AgakError():
+            });
+            await _tts.finish();
+          case AgakError():
+            setState(() {
               _chatError = true;
               _chatErrorMessage = event.message;
-          }
-        });
-        if (_answer.length % 6 == 0) _scrollToBottom();
+            });
+            await _tts.stop();
+        }
       }
     } catch (e) {
       if (!mounted || gen != _chatGen) return;
+      await _tts.stop();
       setState(() {
         _chatError = true;
         _chatErrorMessage = 'Network error: $e';
@@ -259,12 +336,17 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   Future<void> _reset() async {
     _chatGen++; // discard any in-flight stream
     _settleTimer?.cancel();
+    _relistenTimer?.cancel();
     if (_speech.isListening) await _speech.cancel();
+    await _tts.stop();
     if (!mounted) return;
     setState(() {
       _state = _VoiceState.idle;
       _transcript = '';
       _transcriptFinal = false;
+      _segments.clear();
+      _live = '';
+      _stopRequested = false;
       _question = '';
       _answer = '';
       _chatDone = false;
@@ -276,7 +358,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void dispose() {
     _chatGen++;
     _settleTimer?.cancel();
+    _relistenTimer?.cancel();
     _speech.cancel();
+    unawaited(_tts.dispose());
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -416,7 +500,11 @@ class _ListeningBody extends StatelessWidget {
     final bool hasWords = transcript.trim().isNotEmpty;
     return Column(
       children: [
-        _MicHero(onMicTap: onMicTap, listening: true, label: 'Listening...'),
+        _MicHero(
+          onMicTap: onMicTap,
+          listening: true,
+          label: 'Listening… tap the mic to stop',
+        ),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),

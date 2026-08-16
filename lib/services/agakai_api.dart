@@ -25,11 +25,15 @@ class AgakDelta extends AgakEvent {
   final String text;
 }
 
-/// One mp3 chunk of the spoken answer (consecutive pieces of ONE mp3 stream).
-/// Feed to the audio player in arrival order, immediately.
+/// One mp3 chunk of the spoken answer (consecutive pieces of ONE mp3
+/// stream). Feed to the audio player in arrival order, immediately.
+/// [sentence] groups chunks that belong to the same synthesized sentence
+/// (each sentence is its own mp3); a null value falls back to detecting
+/// sentence boundaries by the mp3 ID3 header.
 class AgakAudio extends AgakEvent {
-  AgakAudio({required this.chunk});
+  AgakAudio({required this.chunk, this.sentence});
   final Uint8List chunk;
+  final int? sentence;
 }
 
 /// Pipeline finished.
@@ -111,6 +115,7 @@ class AgakApi {
           case 'audio':
             yield AgakAudio(
               chunk: base64Decode((data['chunk_base64'] ?? '') as String),
+              sentence: (data['sentence'] as num?)?.toInt(),
             );
           case 'done':
             yield AgakDone(
