@@ -69,11 +69,15 @@ async function loadBenefitsContext(): Promise<string> {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   )
-  const { data: benefits } = await supabase.from("benefits").select("*")
+  const { data: benefits } = await supabase
+    .from("benefit")
+    .select(
+      "title, description, simplified_description, iconkey, eligibility, date, lgu(name, level, location)",
+    )
   return (benefits ?? [])
     .map((b: any) => {
       const desc = (b.simplified_description ?? "").trim() || b.description
-      return `- ${b.title}${b.category ? ` [${b.category}]` : ""}: ${desc}${b.eligibility ? ` (Eligibility: ${b.eligibility})` : ""}`
+      return `- ${b.title}: ${desc} (Eligibility: ${b.eligibility}) [${b.lgu?.name ?? "local LGU"}]`
     })
     .join("\n") || "No benefits yet."
 }
