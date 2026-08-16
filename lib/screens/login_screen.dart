@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/profile_service.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_theme.dart';
 import 'app_shell.dart';
@@ -11,24 +13,69 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
   final _seniorIdController = TextEditingController();
+  final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
     _seniorIdController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  void _login() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => const AppShell(),
+  Future<void> _login() async {
+    final seniorId = _seniorIdController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (seniorId.isEmpty || password.isEmpty) {
+      _showError('Please fill in all fields.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+
+      // 1. Query public.user table directly for matching senior_id AND password
+      // Note: Change 'user' below to 'profiles' if your table is named profiles
+      final userRecord = await supabase
+          .from('user')
+          .select()
+          .eq('senior_id', seniorId)
+          .eq('password', password)
+          .maybeSingle();
+
+      if (userRecord == null) {
+        throw Exception('Invalid Senior ID or Password.');
+      }
+
+      // 2. Clear any local profile state/cache if applicable
+      ProfileService.clearCache();
+
+      if (!mounted) return;
+
+      // 3. Navigate to main application shell
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const AppShell(),
+        ),
+      );
+    } catch (e) {
+      _showError(e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red.shade700,
       ),
     );
   }
@@ -50,6 +97,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Image.asset(
                   'assets/images/logo.png',
                   height: 150,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.account_balance_wallet,
+                    size: 80,
+                    color: AppColors.navy,
+                  ),
                 ),
               ),
 
@@ -68,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 4),
 
-              Center(
+              const Center(
                 child: Text(
                   'Log in to continue',
                   style: TextStyle(
@@ -81,25 +133,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
               const SizedBox(height: 32),
 
-              // Email
-              const _FieldLabel(
-                label: 'Email',
-              ),
+              // Senior ID Field
+              const _FieldLabel(label: 'Senior ID'),
               const SizedBox(height: 7),
-
               _LoginField(
-                controller: _emailController,
-                hint: 'Enter your email',
+                controller: _seniorIdController,
+                hint: 'Enter your Senior ID',
               ),
 
               const SizedBox(height: 16),
 
-              // Password
-              const _FieldLabel(
-                label: 'Password',
-              ),
+              // Password Field
+              const _FieldLabel(label: 'Password'),
               const SizedBox(height: 7),
-
               _LoginField(
                 controller: _passwordController,
                 hint: 'Enter your password',
@@ -121,19 +167,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 16),
-
-              // Senior ID
-              const _FieldLabel(
-                label: 'Senior ID',
-              ),
-              const SizedBox(height: 7),
-
-              _LoginField(
-                controller: _seniorIdController,
-                hint: 'Enter your Senior ID',
-              ),
-
               // Forgot Password
               Align(
                 alignment: Alignment.centerRight,
@@ -145,8 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       vertical: 8,
                     ),
                     minimumSize: Size.zero,
-                    tapTargetSize:
-                    MaterialTapTargetSize.shrinkWrap,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: const Text(
                     'Forgot Password?',
@@ -159,14 +191,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 112),
+              const SizedBox(height: 48),
 
               // Login Button
               SizedBox(
                 width: double.infinity,
                 height: 46,
                 child: ElevatedButton(
-                  onPressed: _login,
+                  onPressed: _isLoading ? null : _login,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.navy,
                     foregroundColor: Colors.white,
@@ -175,7 +207,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),
-                  child: const Text(
+                  child: _isLoading
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                      : const Text(
                     'Log in',
                     style: TextStyle(
                       color: Colors.white,
@@ -201,9 +242,7 @@ class _LoginScreenState extends State<LoginScreen> {
 // =============================================================================
 
 class _FieldLabel extends StatelessWidget {
-  const _FieldLabel({
-    required this.label,
-  });
+  const _FieldLabel({required this.label});
 
   final String label;
 
