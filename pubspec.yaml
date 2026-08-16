@@ -13,6 +13,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   speech_to_text: ^7.4.0
   flutter_tts: ^4.2.5
+  supabase_flutter: ^2.8.0
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -22,6 +24,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - .env
     - assets/data/
     - assets/images/logo.png
     - assets/images/avatar.png
