@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/benefit.dart';
 import '../models/benefit_service.dart';
+import '../models/profile.dart';
+import '../models/profile_service.dart';
 import '../theme/app_colors.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -23,6 +25,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final Future<List<Benefit>> _benefitsFuture;
+  late final Future<Profile> _profileFuture;
 
   // App state variables
   bool _isMenuExpanded = false;
@@ -33,6 +36,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _benefitsFuture = BenefitService.loadBenefits();
+    _profileFuture = ProfileService.loadProfile();
   }
 
   // Input-stealing modal dialog helper
@@ -139,92 +143,50 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Modal Dialog Handlers
+  // Profile Modal Pop-up connected to ProfileService
   void _openProfileModal() {
     _showAppModal(
-      title: 'Profile Settings',
-      content: const Text(
-        'Profile screen is currently under construction. Would you like to view user details once available?',
-        style: TextStyle(color: Color(0xFF334D47), fontSize: 14, fontFamily: 'Rubik'),
-      ),
-      confirmText: 'Confirm',
-      onConfirm: () {},
-    );
-  }
-    void _openThemeModal() {
-      bool tempMode = _isDarkMode;
-      _showAppModal(
-        title: 'Theme Settings',
-        content: StatefulBuilder(
-          builder: (context, setModalState) {
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Dark Mode:',
-                  style: TextStyle(
-                    color: Color(0xFF11221D),
-                    fontSize: 15,
-                    fontFamily: 'Rubik',
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Switch(
-                  value: tempMode,
-                  activeColor: const Color(0xFF093582),
-                  onChanged: (val) {
-                    setModalState(() {
-                      tempMode = val;
-                    });
-                  },
-                ),
-              ],
+      title: 'Profile Details',
+      content: FutureBuilder<Profile>(
+        future: _profileFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator()),
             );
-          },
-        ),
-        confirmText: 'Save',
-        onConfirm: () {
-          setState(() {
-            _isDarkMode = tempMode;
-          });
-        },
-      );
-    }
+          }
 
-  void _openLanguageModal() {
-    String tempLang = _selectedLanguage;
-    final languages = ['Bisaya', 'Tagalog', 'English'];
+          if (snapshot.hasError) {
+            return Text(
+              'Failed to load profile: ${snapshot.error}',
+              style: const TextStyle(color: Colors.red, fontSize: 13, fontFamily: 'Rubik'),
+            );
+          }
 
-    _showAppModal(
-      title: 'Select Language',
-      content: StatefulBuilder(
-        builder: (context, setModalState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: languages.map((lang) {
-              return RadioListTile<String>(
-                title: Text(lang, style: const TextStyle(fontFamily: 'Rubik', fontWeight: FontWeight.w600)),
-                value: lang,
-                groupValue: tempLang,
-                activeColor: const Color(0xFF093582),
-                onChanged: (val) {
-                  if (val != null) {
-                    setModalState(() {
-                      tempLang = val;
-                    });
-                  }
-                },
-              );
-            }).toList(),
+          if (!snapshot.hasData) {
+            return const Text('No profile data available.', style: TextStyle(fontFamily: 'Rubik'));
+          }
+
+          final profile = snapshot.data!;
+
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ProfileDetailRow(label: 'Name', value: profile.name),
+                _ProfileDetailRow(label: 'Senior ID', value: profile.seniorId),
+                _ProfileDetailRow(label: 'Mobile No.', value: profile.mobileNo),
+                _ProfileDetailRow(label: 'Age', value: '${profile.age} years old'),
+                _ProfileDetailRow(label: 'Birthday', value: profile.birthday),
+                _ProfileDetailRow(label: 'Address', value: profile.address, isLast: true),
+              ],
+            ),
           );
         },
       ),
-      confirmText: 'Apply',
-      onConfirm: () {
-        setState(() {
-          _selectedLanguage = tempLang;
-        });
-      },
+      confirmText: 'Close',
+      onConfirm: () {},
     );
   }
 
@@ -253,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeInOut,
-                padding: EdgeInsets.zero, // Absolute zero padding
+                padding: EdgeInsets.zero,
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.zero,
@@ -270,30 +232,35 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Base Header Bar Content
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: _GreetingHeader(
-                        userName: 'Maria',
-                        subtitle: 'Kuyogan tika karong adlawa.',
-                        avatarUrl: 'https://placehold.co/52x52',
-                        isMenuExpanded: _isMenuExpanded,
-                        onMenuTap: () {
-                          if (widget.onMenuTap != null) {
-                            widget.onMenuTap!();
-                          } else {
-                            setState(() {
-                              _isMenuExpanded = !_isMenuExpanded;
-                            });
-                          }
-                        },
-                      ),
+                    // Dynamic Header Bar Content using Profile Service
+                    FutureBuilder<Profile>(
+                      future: _profileFuture,
+                      builder: (context, snapshot) {
+                        final displayName = snapshot.hasData ? snapshot.data!.name.split(' ').first : 'Maria';
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          child: _GreetingHeader(
+                            userName: displayName,
+                            subtitle: 'Kuyogan tika karong adlawa.',
+                            avatarUrl: 'https://placehold.co/52x52',
+                            isMenuExpanded: _isMenuExpanded,
+                            onMenuTap: () {
+                              if (widget.onMenuTap != null) {
+                                widget.onMenuTap!();
+                              } else {
+                                setState(() {
+                                  _isMenuExpanded = !_isMenuExpanded;
+                                });
+                              }
+                            },
+                          ),
+                        );
+                      },
                     ),
 
                     // Inline Cascading Dropdown Bar
                     if (_isMenuExpanded) ...[
-                      // Inside _HomeScreenState build method, under `if (_isMenuExpanded) ...[`
-
                       const Divider(color: Color(0xFFE2E8F0), height: 1, thickness: 1),
 
                       // 1. Profile Link
@@ -340,7 +307,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
 
-                      // 3. Direct 3-Way Language Toggle Row
                       // 3. Direct 3-Way Inline Language Toggle Row
                       Container(
                         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
@@ -368,7 +334,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ],
                             ),
                             SizedBox(
-                              height: 32, // Compact height
+                              height: 32,
                               child: ToggleButtons(
                                 isSelected: [
                                   _selectedLanguage == 'Bisaya',
@@ -386,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 borderRadius: BorderRadius.zero,
                                 constraints: const BoxConstraints(
                                   minHeight: 32,
-                                  minWidth: 0, // Allows buttons to shrink and hug text
+                                  minWidth: 0,
                                 ),
                                 children: const [
                                   Padding(
@@ -528,6 +494,60 @@ class _HomeScreenState extends State<HomeScreen> {
 // =============================================================================
 // SUB-WIDGET DEFINITIONS
 // =============================================================================
+
+class _ProfileDetailRow extends StatelessWidget {
+  const _ProfileDetailRow({
+    required this.label,
+    required this.value,
+    this.isLast = false,
+  });
+
+  final String label;
+  final String value;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : const Border(
+                bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
+              ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 13,
+                fontFamily: 'Rubik',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Color(0xFF11221D),
+                fontSize: 14,
+                fontFamily: 'Rubik',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _GreetingHeader extends StatelessWidget {
   const _GreetingHeader({

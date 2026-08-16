@@ -6,10 +6,10 @@ class AppBottomNav extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
-    this.activeBg = AppColors.skyBlueBg,
-    this.activeColor = AppColors.navy,
-    this.inactiveColor = AppColors.slateText,
-    this.topBorder = AppColors.skyBlueBg2,
+    this.activeBg = const Color(0xFFD2ECFF),
+    this.activeColor = const Color(0xFF093582),
+    this.inactiveColor = const Color(0xFF093582),
+    this.topBorder = const Color(0xFFD2E2FF),
   });
 
   final int currentIndex;
@@ -27,57 +27,69 @@ class AppBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: topBorder, width: 2)),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          top: BorderSide(color: topBorder, width: 2),
         ),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(_tabs.length, (i) {
-            final tab = _tabs[i];
-            final selected = i == currentIndex;
-            final label = tab.labelBottom == null
-                ? tab.labelTop
-                : '${tab.labelTop} / ${tab.labelBottom}';
-            return Expanded(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () => onTap(i),
-                child: Container(
-                  height: 70,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  decoration: BoxDecoration(
-                    color: selected ? activeBg : Colors.transparent,
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 10, left: 12, right: 12, bottom: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: List.generate(_tabs.length, (i) {
+              final tab = _tabs[i];
+              final selected = i == currentIndex;
+              final label = tab.labelBottom == null
+                  ? tab.labelTop
+                  : '${tab.labelTop} / ${tab.labelBottom}';
+
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        tab.icon,
-                        size: 26,
-                        color: selected ? activeColor : inactiveColor,
+                    onTap: () => onTap(i),
+                    child: Container(
+                      height: 70,
+                      decoration: BoxDecoration(
+                        color: selected ? activeBg : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        label,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: selected ? activeColor : inactiveColor,
-                        ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Icon(
+                            tab.icon,
+                            size: 26,
+                            color: selected ? activeColor : inactiveColor,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            label,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: selected ? activeColor : inactiveColor,
+                              fontSize: 11,
+                              fontFamily: 'Rubik',
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
       ),
     );

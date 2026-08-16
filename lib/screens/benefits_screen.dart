@@ -1,380 +1,386 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import '../models/benefit.dart';
-import '../models/benefit_service.dart';
-import '../models/voice_form_field.dart';
-import '../theme/app_colors.dart';
-import 'voice_form_screen.dart';
+import 'package:flutter/services.dart';
 
-class BenefitsScreen extends StatefulWidget {
-  const BenefitsScreen({
-    super.key,
-    this.onBack,
+class Benefit {
+  const Benefit({
+    required this.id,
+    required this.title,
+    required this.date,
+    required this.location,
+    required this.iconKey,
+    required this.category,
+    required this.description,
   });
 
+  final String id;
+  final String title;
+  final String date;
+  final String location;
+  final String iconKey;
+  final String category;
+  final String description;
+
+  IconData get iconData {
+    switch (iconKey.toLowerCase()) {
+      case 'pension':
+      case 'cash':
+      case 'money':
+        return Icons.payments_rounded;
+      case 'medical':
+      case 'hospital':
+      case 'health':
+        return Icons.health_and_safety_rounded;
+      case 'food':
+      case 'grocery':
+        return Icons.local_dining_rounded;
+      case 'transport':
+      case 'bus':
+      case 'fare':
+        return Icons.directions_bus_filled_rounded;
+      default:
+        return Icons.card_membership_rounded;
+    }
+  }
+
+  factory Benefit.fromJson(Map<String, dynamic> json) {
+    // Gracefully handle combined 'dateAndLocation' or separate 'date' and 'location'
+    final rawDate = json['date'] as String? ?? '';
+    final rawLocation = json['location'] as String? ?? '';
+    final combined = json['dateAndLocation'] as String? ?? '';
+
+    String parsedDate = rawDate;
+    String parsedLocation = rawLocation;
+
+    if (combined.isNotEmpty && parsedDate.isEmpty && parsedLocation.isEmpty) {
+      final parts = combined.split('•');
+      parsedDate = parts.isNotEmpty ? parts[0].trim() : combined;
+      parsedLocation = parts.length > 1 ? parts[1].trim() : '';
+    }
+
+    return Benefit(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      date: parsedDate,
+      location: parsedLocation,
+      iconKey: json['iconKey'] as String? ?? '',
+      category: json['category'] as String? ?? 'General',
+      description: json['description'] as String? ?? '',
+    );
+  }
+}
+
+class BenefitsScreen extends StatefulWidget {
   final VoidCallback? onBack;
+
+  const BenefitsScreen({super.key, this.onBack});
 
   @override
   State<BenefitsScreen> createState() => _BenefitsScreenState();
 }
 
 class _BenefitsScreenState extends State<BenefitsScreen> {
-  late final Future<List<Benefit>> _benefitsFuture;
+  late Future<List<Benefit>> _benefitsFuture;
 
   @override
   void initState() {
     super.initState();
-    _benefitsFuture = BenefitService.loadBenefits();
+    _benefitsFuture = _loadBenefitsJson();
+  }
+
+  Future<List<Benefit>> _loadBenefitsJson() async {
+    final String response =
+        await rootBundle.loadString('assets/data/benefits.json');
+    final List<dynamic> data = json.decode(response) as List<dynamic>;
+    return data
+        .map((item) => Benefit.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.pageBg,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _HeaderBar(onBack: widget.onBack),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: const Color(0xFFD2E2FF),
-                            width: 2,
-                          ),
-                        ),
-                        child: const Text(
-                          '🇵🇭 Bisaya / Eng',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 12,
-                            fontFamily: 'Rubik',
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    FutureBuilder<List<Benefit>>(
-                      future: _benefitsFuture,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 40),
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        }
-
-                        if (snapshot.hasError) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: Text(
-                              'Error loading benefits: ${snapshot.error}',
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 13,
-                              ),
-                            ),
-                          );
-                        }
-
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return const Text('No available benefits at this time.');
-                        }
-
-                        final benefits = snapshot.data!;
-
-                        return Column(
-                          children: [
-                            for (int i = 0; i < benefits.length; i++) ...[
-                              _BenefitActionCard(
-                                title: benefits[i].title,
-                                subtitle: 'CLAIM NOW / KUHAA NA',
-                                date: benefits[i].date ?? 'Available Daily',
-                                location: benefits[i].location ?? 'Barangay Hall',
-                                description: benefits[i].description ??
-                                    'P1,000 Monthly Cash assistance for senior residents.',
-                                icon: benefits[i].iconData,
-                                onClaimTap: benefits[i].iconKey == 'pension'
-                                    ? () => Navigator.of(context).push(
-                                          MaterialPageRoute(
-                                            builder: (_) => const VoiceFormScreen(
-                                                form: pensionApplicationForm),
-                                          ),
-                                        )
-                                    : () {},
-                              ),
-                              if (i < benefits.length - 1)
-                                const SizedBox(height: 16),
-                            ],
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              bottom: BorderSide(
+                color: Color(0xFFE2E8F0),
+                width: 1,
               ),
             ),
-          ],
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
+                    onPressed: widget.onBack ?? () => Navigator.maybePop(context),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Text(
+                          'My Benefits',
+                          style: TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Akong mga Benepisyo ug Pribilehiyo',
+                          style: TextStyle(
+                            color: Color(0xFF093582),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
+      ),
+      body: FutureBuilder<List<Benefit>>(
+        future: _benefitsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Error loading benefits list: ${snapshot.error}',
+                style: const TextStyle(color: Colors.red),
+              ),
+            );
+          }
+
+          final benefits = snapshot.data ?? [];
+
+          if (benefits.isEmpty) {
+            return const Center(child: Text('No benefits found.'));
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            itemCount: benefits.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 16),
+            itemBuilder: (context, index) {
+              return BenefitCard(benefit: benefits[index]);
+            },
+          );
+        },
       ),
     );
   }
 }
 
-class _HeaderBar extends StatelessWidget {
-  const _HeaderBar({this.onBack});
+class BenefitCard extends StatelessWidget {
+  final Benefit benefit;
 
-  final VoidCallback? onBack;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(
-            color: Color(0xFFF3E4D9),
-            width: 1,
-          ),
-        ),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(
-              Icons.arrow_back,
-              color: Color(0xFF0F172A),
-              size: 24,
-            ),
-            onPressed: onBack ?? () => Navigator.of(context).maybePop(),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: const [
-                Text(
-                  'My Benefits',
-                  style: TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 24,
-                    fontFamily: 'LINE Seed Sans',
-                    fontWeight: FontWeight.w800,
-                    height: 1.2,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Akong mga Benepisyo ug Pribilehiyo',
-                  style: TextStyle(
-                    color: Color(0xFF093582),
-                    fontSize: 13,
-                    fontFamily: 'LINE Seed Sans',
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BenefitActionCard extends StatelessWidget {
-  const _BenefitActionCard({
-    required this.title,
-    required this.subtitle,
-    required this.date,
-    required this.location,
-    required this.description,
-    required this.icon,
-    required this.onClaimTap,
-  });
-
-  final String title;
-  final String subtitle;
-  final String date;
-  final String location;
-  final String description;
-  final IconData icon;
-  final VoidCallback onClaimTap;
+  const BenefitCard({super.key, required this.benefit});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFCBD5E1), width: 2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 1.5,
+        ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x080F172A),
-            blurRadius: 8,
+            color: Color(0x0A0F172A),
+            blurRadius: 12,
             offset: Offset(0, 4),
           ),
         ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD2ECFF),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  color: const Color(0xFF0284C7),
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Color(0xFF11221D),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        fontFamily: 'Rubik',
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFF475569),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        fontFamily: 'Rubik',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            description,
-            style: const TextStyle(
-              color: Color(0xFF334D47),
-              fontSize: 14,
-              fontFamily: 'Rubik',
-              fontWeight: FontWeight.w500,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Date & Location Info Chips
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
+          // Header Row: Accent Indicator + Title + Category Icon Container
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.calendar_today_outlined,
-                      size: 16,
-                      color: Color(0xFF0284C7),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        date,
-                        style: const TextStyle(
-                          color: Color(0xFF334155),
-                          fontSize: 13,
-                          fontFamily: 'Rubik',
-                          fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 24,
+                        margin: const EdgeInsets.only(top: 2, right: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF093582),
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                    ),
-                  ],
+                      Expanded(
+                        child: Text(
+                          benefit.title,
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            height: 1.25,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_outlined,
-                      size: 16,
-                      color: Color(0xFF0284C7),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        location,
-                        style: const TextStyle(
-                          color: Color(0xFF334155),
-                          fontSize: 13,
-                          fontFamily: 'Rubik',
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    benefit.iconData,
+                    color: const Color(0xFF093582),
+                    size: 22,
+                  ),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
-              onPressed: onClaimTap,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF093582),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          const Divider(height: 1, thickness: 1, color: Color(0xFFF1F5F9)),
+
+          // Details Block
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (benefit.date.isNotEmpty)
+                  _MetaRow(
+                    icon: Icons.calendar_today_rounded,
+                    label: benefit.date,
+                  ),
+                if (benefit.location.isNotEmpty) ...[
+                  if (benefit.date.isNotEmpty) const SizedBox(height: 8),
+                  _MetaRow(
+                    icon: Icons.location_on_rounded,
+                    label: benefit.location,
+                  ),
+                ],
+                if (benefit.description.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(8),
+                      border: const Border(
+                        left: BorderSide(
+                          color: Color(0xFFCBD5E1),
+                          width: 3,
+                        ),
+                      ),
+                    ),
+                    child: Text(
+                      benefit.description,
+                      style: const TextStyle(
+                        color: Color(0xFF475569),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                        height: 1.45,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF093582),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: () {},
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const [
+                        Text(
+                          'How To Claim',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(Icons.arrow_forward_rounded, size: 16),
+                      ],
+                    ),
+                  ),
                 ),
-              ),
-              child: const Text(
-                'How To Claim',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontFamily: 'Rubik',
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MetaRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MetaRow({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: 16,
+          color: const Color(0xFF64748B),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF334155),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

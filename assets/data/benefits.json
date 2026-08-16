@@ -1,26 +1,34 @@
 [
   {
+    "id": "1",
     "title": "Pension Payout / Pensyon",
-    "date": "March 15, 2026",
-    "location": "City Hall",
-    "iconKey": "pension"
+    "dateAndLocation": "March 15, 2026 • City Hall",
+    "iconKey": "pension",
+    "category": "Financial",
+    "description": "Quarterly social pension cash payout for senior citizens."
   },
   {
+    "id": "2",
     "title": "Robinsons Place Free Checkup",
-    "date": "March 18, 2026",
-    "location": "Robinsons Place Dumaguete",
-    "iconKey": "health"
+    "dateAndLocation": "March 18, 2026 • Robinsons Place Dumaguete",
+    "iconKey": "health",
+    "category": "Medical",
+    "description": "Free blood pressure checks, sugar level tests, and medical consultation."
   },
   {
+    "id": "3",
     "title": "Food Subsidy Distribution",
-    "date": "March 22, 2026",
-    "location": "Barangay Center",
-    "iconKey": "food"
+    "dateAndLocation": "March 22, 2026 • Barangay Center",
+    "iconKey": "food",
+    "category": "Assistance",
+    "description": "Monthly grocery goods and rice distribution."
   },
   {
+    "id": "4",
     "title": "Senior Transportation Pass Renewal",
-    "date": "March 28, 2026",
-    "location": "LTO Main Office",
-    "iconKey": "transport"
+    "dateAndLocation": "March 28, 2026 • LTO Main Office",
+    "iconKey": "transport",
+    "category": "Transit",
+    "description": "Annual renewal for free and discounted public transit passes."
   }
 ]

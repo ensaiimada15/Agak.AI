@@ -1,50 +1,60 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // REQUIRED for IconData and Icons
 
 class Benefit {
-  final String title;
-  final String? description;
-  final String? date;
-  final String? location;
-  final IconData iconData;
-
-  Benefit({
+  const Benefit({
+    required this.id,
     required this.title,
-    this.description,
-    this.date,
-    this.location,
-    required this.iconData,
+    required this.dateAndLocation,
+    required this.iconKey,
+    required this.category,
+    required this.description,
   });
 
-  // Combines date and location for home_screen.dart
-  String get dateAndLocation {
-    final formattedDate = date ?? 'Available Daily';
-    final formattedLocation = location ?? 'Barangay Hall';
-    return '$formattedDate • $formattedLocation';
-  }
+  final String id;
+  final String title;
+  final String dateAndLocation;
+  final String iconKey;
+  final String category;
+  final String description;
 
-  // Parses JSON data safely
-  factory Benefit.fromJson(Map<String, dynamic> json) {
-    return Benefit(
-      title: json['title'] as String? ?? 'Unnamed Benefit',
-      description: json['description'] as String? ??
-          'Cash assistance and community welfare program.',
-      date: json['date'] as String? ?? 'Available Daily',
-      location: json['location'] as String? ?? 'Barangay Hall',
-      iconData: _getIconFromName(json['icon'] as String?),
-    );
-  }
-
-  // Maps JSON string names to actual Flutter Icons
-  static IconData _getIconFromName(String? iconName) {
-    switch (iconName) {
-      case 'medical':
-        return Icons.medical_services_outlined;
+  IconData get iconData {
+    switch (iconKey.toLowerCase()) {
+      case 'pension':
       case 'cash':
-        return Icons.payments_outlined;
+      case 'money':
+        return Icons.payments_rounded;
+      case 'medical':
+      case 'hospital':
+      case 'health':
+        return Icons.health_and_safety_rounded;
       case 'food':
-        return Icons.restaurant_outlined;
+      case 'grocery':
+        return Icons.local_dining_rounded;
+      case 'transport':
+      case 'bus':
+      case 'fare':
+        return Icons.directions_bus_filled_rounded;
       default:
-        return Icons.card_giftcard_outlined;
+        return Icons.card_membership_rounded;
     }
+  }
+
+  factory Benefit.fromJson(Map<String, dynamic> json) {
+    final date = json['date'] as String? ?? '';
+    final location = json['location'] as String? ?? '';
+
+    String combinedDateLoc = json['dateAndLocation'] as String? ?? '';
+    if (combinedDateLoc.isEmpty && (date.isNotEmpty || location.isNotEmpty)) {
+      combinedDateLoc = [date, location].where((e) => e.isNotEmpty).join(' • ');
+    }
+
+    return Benefit(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      dateAndLocation: combinedDateLoc,
+      iconKey: json['iconKey'] as String? ?? '',
+      category: json['category'] as String? ?? 'General',
+      description: json['description'] as String? ?? '',
+    );
   }
 }
