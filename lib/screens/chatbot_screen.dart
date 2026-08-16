@@ -10,6 +10,12 @@ class _ChatMessage {
   final String text;
 }
 
+const _quickQuestions = [
+  'How to claim pension?',
+  'When is next vaccine?',
+  'How to claim movie ticket?',
+];
+
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key, this.onBack});
 
@@ -117,26 +123,30 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                     _ChatBubble(message: m),
                     const SizedBox(height: 16),
                   ],
-                  const Text('PINDOTA KANI PARA DALI NGA PANGUTANA:',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                          color: AppColors.forestBody)),
-                  const SizedBox(height: 12),
-                  _QuickQuestion(
-                    label: 'How to claim pension? / Unsaon pagkuha sa pensyon?',
-                    onTap: () => _send('How to claim pension?'),
-                  ),
-                  const SizedBox(height: 12),
-                  _QuickQuestion(
-                    label: 'When is next vaccine? / Kanus-a ang bakuna?',
-                    onTap: () => _send('When is next vaccine?'),
-                  ),
                 ],
               ),
             ),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.forestBorder, width: 2)),
+              ),
+              child: SizedBox(
+                height: 40,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _quickQuestions.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) => _QuickQuestionChip(
+                    label: _quickQuestions[i],
+                    onTap: () => _send(_quickQuestions[i]),
+                  ),
+                ),
+              ),
+            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
               child: Row(
                 children: [
                   Expanded(
@@ -285,35 +295,34 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-class _QuickQuestion extends StatelessWidget {
-  const _QuickQuestion({required this.label, required this.onTap});
+class _QuickQuestionChip extends StatelessWidget {
+  const _QuickQuestionChip({required this.label, required this.onTap});
   final String label;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(20),
       onTap: onTap,
       child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: AppColors.orangeBg2,
-          border: Border.all(color: AppColors.orange, width: 2),
-          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.orange, width: 1.5),
+          borderRadius: BorderRadius.circular(20),
         ),
+        alignment: Alignment.center,
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.touch_app_outlined, color: AppColors.orange, size: 20),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(label,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                      color: AppColors.forestDark)),
-            ),
+            const Icon(Icons.touch_app_outlined, color: AppColors.orange, size: 16),
+            const SizedBox(width: 6),
+            Text(label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: AppColors.forestDark)),
           ],
         ),
       ),
