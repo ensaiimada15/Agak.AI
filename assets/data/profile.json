@@ -1,5 +1,6 @@
 {
   "name": "Maria Santos",
+  "email": "maria.santos@example.com",
   "seniorId": "OSCA-2024-8921",
   "password": "password123",
   "mobileNo": "09171234567",
@@ -7,3 +8,4 @@
   "birthday": "1958-03-15",
   "address": "123 Mabini St., Brgy. Luz, Cebu City"
 }
+
