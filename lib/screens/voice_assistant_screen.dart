@@ -223,7 +223,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   /// segments keep the full transcript across restarts.
   void _scheduleRelisten() {
     _relistenTimer?.cancel();
-    _relistenTimer = Timer(const Duration(milliseconds: 800), () async {
+    // Keep the gap between engine restarts short so pauses don't feel like
+    // the mic "stopped".
+    _relistenTimer = Timer(const Duration(milliseconds: 500), () async {
       if (!mounted || _state != _VoiceState.listening || _stopRequested) return;
       if (_speech.isListening) return;
       setState(() => _transcriptFinal = false);

@@ -69,15 +69,30 @@ async function loadBenefitsContext(): Promise<string> {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   )
-  const { data: benefits } = await supabase
-    .from("benefit")
-    .select(
-      "title, description, simplified_description, iconkey, eligibility, date, lgu(name, level, location)",
-    )
-  return (benefits ?? [])
+
+  // Fetch `benefit` and `lgu` flat (select * — resilient to column drift)
+  // and join in code. The embedded resource `lgu(name, level, location)`
+  // used to require an FK relationship in the schema cache; on projects
+  // where that constraint is missing the whole query errors out and the
+  // model would get zero benefit context.
+  const { data: benefits } = await supabase.from("benefit").select("*")
+  const lgus: Record<string, string> = {}
+  try {
+    const lguRes = await supabase.from("lgu").select("*")
+    for (const l of (lguRes.data ?? []) as any[]) {
+      if (l?.id) lgus[String(l.id)] = l.name ?? l.lgu_name ?? ""
+    }
+  } catch {
+    // lgu table may not exist on some projects — benefits still load.
+  }
+  return benefits
     .map((b: any) => {
       const desc = (b.simplified_description ?? "").trim() || b.description
-      return `- ${b.title}: ${desc} (Eligibility: ${b.eligibility}) [${b.lgu?.name ?? "local LGU"}]`
+      const lguName =
+        (b.lgu_id && lgus[String(b.lgu_id)]) ||
+        (b.lgu_name || "") ||
+        "local LGU"
+      return `- ${b.title}: ${desc} (Eligibility: ${b.eligibility}) [${lguName}]`
     })
     .join("\n") || "No benefits yet."
 }

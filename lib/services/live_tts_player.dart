@@ -7,9 +7,10 @@
 // different mp3s into one decoder session corrupts playback (the decoder
 // discards "unknown buffers" and the audio cuts off), so this player:
 //   - starts playback as soon as the FIRST chunk of sentence 1 arrives,
-//   - at each sentence boundary closes out the previous mp3 (clean EOF so
-//     just_audio finishes it naturally) and starts a fresh source,
-//   - plays sentences sequentially in one pump loop.
+//   - keeps each sentence in its own decoder session,
+//   - completed sentences go to a FIFO queue and are played IN ARRIVAL
+//     ORDER — a sentence that finishes buffering while an earlier one is
+//     still playing must NOT be dropped or reordered.
 // If `sentence` is absent (old backend), it falls back to sniffing the
 // mp3 ID3 header ("ID3") at chunk starts to detect boundaries.
 //
@@ -28,9 +29,12 @@ import 'package:just_audio/just_audio.dart';
 class LiveTtsPlayer {
   final AudioPlayer _player = AudioPlayer();
 
-  /// The mp3 currently being filled by incoming chunks.
-  _Mp3Source? _currentSource;
-  int _currentSentence = -1;
+  /// The mp3 currently being filled by incoming chunks (the newest one).
+  _Mp3Source? _filling;
+  int _fillingSentence = -1;
+
+  /// Sentences whose audio has fully arrived, waiting to play (FIFO).
+  final List<_Mp3Source> _ready = [];
 
   /// The source currently bound to the player.
   _Mp3Source? _activeSource;
@@ -49,28 +53,31 @@ class LiveTtsPlayer {
         bytes[0] == 0x49 && // 'I'
         bytes[1] == 0x44 && // 'D'
         bytes[2] == 0x33; // '3'
-    final bool boundary = _currentSource != null &&
-        ((sentence != null && sentence != _currentSentence) ||
+    final bool boundary = _filling != null &&
+        ((sentence != null && sentence != _fillingSentence) ||
             (sentence == null && id3Start));
 
-    if (_currentSource == null || boundary) {
-      // Close out the previous mp3 with its known length so the player
-      // reaches a clean EOF and finishes this decoder session. (The source
-      // already has every byte of its sentence — the backend sends each
-      // sentence's chunks contiguously before moving to the next.)
-      if (_currentSource != null) {
-        _currentSource!.close();
+    if (_filling == null || boundary) {
+      // This sentence is complete — queue it for playback (FIFO, so it
+      // plays in order even if earlier sentences are still playing).
+      if (_filling != null) {
+        _filling!.close(); // known length → clean EOF for the player
+        _ready.add(_filling!);
       }
-      _currentSentence = sentence ?? _currentSentence + 1;
-      _currentSource = _Mp3Source();
+      _fillingSentence = sentence ?? _fillingSentence + 1;
+      _filling = _Mp3Source();
     }
-    _currentSource!.add(bytes);
+    _filling!.add(bytes);
     unawaited(_pump());
   }
 
   /// Call when the backend stream ends (`done` event).
   Future<void> finish() async {
-    _currentSource?.close();
+    if (_filling != null) {
+      _filling!.close();
+      _ready.add(_filling!);
+      _filling = null;
+    }
     unawaited(_pump());
   }
 
@@ -79,11 +86,12 @@ class LiveTtsPlayer {
   /// discarded (the caller's generation guard prevents them anyway).
   Future<void> stop() async {
     _stopped = true;
-    _currentSource?.close(); // wake any pending reads
+    if (_filling != null) _filling!.close(); // wake any pending reads
     await _player.stop();
-    _currentSource = null;
+    _filling = null;
+    _fillingSentence = -1;
+    _ready.clear();
     _activeSource = null;
-    _currentSentence = -1;
     _pumping = false;
   }
 
@@ -92,15 +100,21 @@ class LiveTtsPlayer {
     await _player.dispose();
   }
 
-  /// Single-flight pump: plays each completed/streaming sentence to its
-  /// natural end, then switches to the next one that has arrived.
+  /// Single-flight pump: plays each sentence to its natural end, in FIFO
+  /// arrival order.
   Future<void> _pump() async {
     if (_pumping || _stopped) return;
     _pumping = true;
     try {
       while (!_stopped) {
-        final next = _currentSource;
-        if (next == null || identical(next, _activeSource)) break;
+        _Mp3Source? next;
+        if (_ready.isNotEmpty) {
+          next = _ready.removeAt(0);
+        } else if (_filling != null && !identical(_filling, _activeSource)) {
+          // Nothing queued: stream whatever sentence is still arriving.
+          next = _filling;
+        }
+        if (next == null) break;
         _activeSource = next;
         try {
           await _player.setAudioSource(next);
