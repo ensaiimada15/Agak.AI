@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -85,8 +86,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  // ---- streaming voice playback (step: LLM text + TTS voice) ----
+  // ---- whole-answer voice playback ----
   final LiveTtsPlayer _tts = LiveTtsPlayer();
+  final BytesBuilder _audioBytes = BytesBuilder();
 
   @override
   void initState() {
@@ -272,6 +274,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     if (q.isEmpty) return;
     // Barge-in: cut off any speech from a previous session before moving on.
     unawaited(_tts.stop());
+    _audioBytes.clear();
     setState(() {
       _state = _VoiceState.answering;
       _question = q;
@@ -296,16 +299,16 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
             setState(() => _answer += event.text);
             if (_answer.length % 6 == 0) _scrollToBottom();
           case AgakAudio():
-            // Feed the mp3 chunk to the player immediately; it starts
-            // speaking as soon as the first chunk arrives. `sentence` groups
-            // chunks into one clean decoder session per TTS sentence.
-            unawaited(_tts.addChunk(event.chunk, sentence: event.sentence));
+            // Accumulate the mp3 chunks; the full answer is played as one
+            // file when `done` arrives (whole-answer playback — nothing
+            // streams, so nothing can skip).
+            _audioBytes.add(event.chunk);
           case AgakDone():
             setState(() {
               _answer = event.answer;
               _chatDone = true;
             });
-            await _tts.finish();
+            await _tts.play(_audioBytes.takeBytes());
           case AgakError():
             setState(() {
               _chatError = true;
@@ -341,6 +344,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _relistenTimer?.cancel();
     if (_speech.isListening) await _speech.cancel();
     await _tts.stop();
+    _audioBytes.clear();
     if (!mounted) return;
     setState(() {
       _state = _VoiceState.idle;
