@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:agakai/widgets/app_bottom_nav.dart';
 import 'package:agakai/screens/benefits_screen.dart';   // Updated to match your original benefits_screen.dart file
 import 'package:agakai/screens/home_screen.dart';
+import 'package:agakai/screens/voice_assistant_screen.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -33,24 +34,7 @@ class _AppShellState extends State<AppShell> {
         onBack: () => _goTo(0),
       ),
       // Index 2: Voice
-      Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Voice Assistant coming soon',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => _goTo(0),
-                child: const Text('Back to Home'),
-              ),
-            ],
-          ),
-        ),
-      ),
+      const VoiceAssistantScreen(),
     ];
 
     return Scaffold(
