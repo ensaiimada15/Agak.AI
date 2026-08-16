@@ -1,25 +1,25 @@
 [
   {
     "title": "Pension Payout / Pensyon",
-    "date": "March 15",
+    "date": "March 15, 2026",
     "location": "City Hall",
     "iconKey": "pension"
   },
   {
     "title": "Robinsons Place Free Checkup",
-    "date": "March 18",
+    "date": "March 18, 2026",
     "location": "Robinsons Place Dumaguete",
     "iconKey": "health"
   },
   {
     "title": "Food Subsidy Distribution",
-    "date": "March 22",
+    "date": "March 22, 2026",
     "location": "Barangay Center",
     "iconKey": "food"
   },
   {
     "title": "Senior Transportation Pass Renewal",
-    "date": "March 28",
+    "date": "March 28, 2026",
     "location": "LTO Main Office",
     "iconKey": "transport"
   }

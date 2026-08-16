@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart'; // <--- MANDATORY IMPORT
+import 'package:flutter/material.dart';
 import '../models/benefit.dart';
 import '../models/benefit_service.dart';
 import '../theme/app_colors.dart';
@@ -99,7 +99,9 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
                               _BenefitActionCard(
                                 title: benefits[i].title,
                                 subtitle: 'CLAIM NOW / KUHAA NA',
-                                description:
+                                date: benefits[i].date ?? 'Available Daily',
+                                location: benefits[i].location ?? 'Barangay Hall',
+                                description: benefits[i].description ??
                                     'P1,000 Monthly Cash assistance for senior residents.',
                                 icon: benefits[i].iconData,
                                 onClaimTap: () {},
@@ -189,6 +191,8 @@ class _BenefitActionCard extends StatelessWidget {
   const _BenefitActionCard({
     required this.title,
     required this.subtitle,
+    required this.date,
+    required this.location,
     required this.description,
     required this.icon,
     required this.onClaimTap,
@@ -196,6 +200,8 @@ class _BenefitActionCard extends StatelessWidget {
 
   final String title;
   final String subtitle;
+  final String date;
+  final String location;
   final String description;
   final IconData icon;
   final VoidCallback onClaimTap;
@@ -275,6 +281,65 @@ class _BenefitActionCard extends StatelessWidget {
               height: 1.4,
             ),
           ),
+          const SizedBox(height: 12),
+
+          // Date & Location Info Chips
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_outlined,
+                      size: 16,
+                      color: Color(0xFF0284C7),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        date,
+                        style: const TextStyle(
+                          color: Color(0xFF334155),
+                          fontSize: 13,
+                          fontFamily: 'Rubik',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 16,
+                      color: Color(0xFF0284C7),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        location,
+                        style: const TextStyle(
+                          color: Color(0xFF334155),
+                          fontSize: 13,
+                          fontFamily: 'Rubik',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -289,7 +354,7 @@ class _BenefitActionCard extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'Claim Pension (Pindota)',
+                'How To Claim',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
