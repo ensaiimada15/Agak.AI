@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../settings/app_settings.dart';// Navigates up from lib/screens to lib/
+import '../main.dart';         // Navigates up from lib/screens to lib/ to get AppSettingsScope
 import '../models/benefit.dart';
 import '../models/benefit_service.dart';
 import '../models/profile.dart';
@@ -27,28 +30,25 @@ class _HomeScreenState extends State<HomeScreen> {
   late final Future<List<Benefit>> _benefitsFuture;
   late final Future<Profile> _profileFuture;
 
-  // App state variables
   bool _isMenuExpanded = false;
-  String _selectedLanguage = 'Bisaya';
 
   @override
   void initState() {
     super.initState();
     _profileFuture = ProfileService.loadProfile();
-    // Benefits shown on the home tab are filtered to THIS senior's area;
-    // if the profile can't load, fall back to the full list.
     _benefitsFuture = _profileFuture
         .then((p) => BenefitService.loadRelevantBenefits(p.address))
         .catchError((_) => BenefitService.loadBenefits());
   }
 
-  // Input-stealing modal dialog helper
   void _showAppModal({
     required String title,
     required Widget content,
     required String confirmText,
     required VoidCallback onConfirm,
   }) {
+    final settings = AppSettingsScope.of(context);
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -95,9 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 borderRadius: BorderRadius.zero,
                               ),
                             ),
-                            child: const Text(
-                              'Cancel',
-                              style: TextStyle(
+                            child: Text(
+                              settings.t('cancel'),
+                              style: const TextStyle(
                                 color: Color(0xFF475569),
                                 fontSize: 14,
                                 fontFamily: 'Rubik',
@@ -146,10 +146,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // Profile Modal Pop-up connected to ProfileService
   void _openProfileModal() {
+    final settings = AppSettingsScope.of(context);
+
     _showAppModal(
-      title: 'Profile Details',
+      title: settings.t('profile_details'),
       content: FutureBuilder<Profile>(
         future: _profileFuture,
         builder: (context, snapshot) {
@@ -162,15 +163,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
           if (snapshot.hasError) {
             return Text(
-              'Failed to load profile: ${snapshot.error}',
+              '${settings.t('failed_to_load_profile')}: ${snapshot.error}',
               style: const TextStyle(
                   color: Colors.red, fontSize: 13, fontFamily: 'Rubik'),
             );
           }
 
           if (!snapshot.hasData) {
-            return const Text('No profile data available.',
-                style: TextStyle(fontFamily: 'Rubik'));
+            return Text(settings.t('no_profile_data'),
+                style: const TextStyle(fontFamily: 'Rubik'));
           }
 
           final profile = snapshot.data!;
@@ -179,40 +180,46 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _ProfileDetailRow(label: 'Name', value: profile.name),
-                _ProfileDetailRow(label: 'Senior ID', value: profile.seniorId),
-                _ProfileDetailRow(label: 'Mobile No.', value: profile.mobileNo),
+                _ProfileDetailRow(label: settings.t('name'), value: profile.name),
+                _ProfileDetailRow(label: settings.t('senior_id'), value: profile.seniorId),
+                _ProfileDetailRow(label: settings.t('mobile_no'), value: profile.mobileNo),
                 _ProfileDetailRow(
-                    label: 'Age', value: '${profile.age} years old'),
+                  label: settings.t('age'),
+                  value: settings.t('age_years', {'age': '${profile.age}'}),
+                ),
                 _ProfileDetailRow(label: 'Gender', value: profile.gender),
-                _ProfileDetailRow(label: 'Birthday', value: profile.birthday),
+                _ProfileDetailRow(label: settings.t('birthday'), value: profile.birthday),
                 _ProfileDetailRow(
-                    label: 'Address', value: profile.address, isLast: true),
+                    label: settings.t('address'), value: profile.address, isLast: true),
               ],
             ),
           );
         },
       ),
-      confirmText: 'Close',
+      confirmText: settings.t('close'),
       onConfirm: () {},
     );
   }
 
   void _openLogoutModal() {
+    final settings = AppSettingsScope.of(context);
+
     _showAppModal(
-      title: 'Log Out',
-      content: const Text(
-        'Are you sure you want to log out of your account?',
-        style: TextStyle(
+      title: settings.t('log_out'),
+      content: Text(
+        settings.t('are_you_sure_logout'),
+        style: const TextStyle(
             color: Color(0xFF334D47), fontSize: 14, fontFamily: 'Rubik'),
       ),
-      confirmText: 'Log Out',
+      confirmText: settings.t('log_out'),
       onConfirm: () {},
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final settings = AppSettingsScope.of(context);
+
     return Scaffold(
       backgroundColor: AppColors.pageBg,
       body: SafeArea(
@@ -220,7 +227,6 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Full-Width Nav-Bar Style Profile Header (Zero Outer/Inner Padding)
               AnimatedContainer(
                 duration: const Duration(milliseconds: 250),
                 curve: Curves.easeInOut,
@@ -241,7 +247,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Column(
                   children: [
-                    // Dynamic Header Bar Content using Profile Service
                     FutureBuilder<Profile>(
                       future: _profileFuture,
                       builder: (context, snapshot) {
@@ -253,8 +258,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 16, vertical: 12),
                           child: _GreetingHeader(
+                            greetingPrefix: settings.t('greeting_prefix'),
                             userName: displayName,
-                            subtitle: 'Kuyogan tika karong adlawa.',
+                            subtitle: settings.t('greeting_subtitle'),
                             avatarUrl: 'https://placehold.co/52x52.png',
                             isMenuExpanded: _isMenuExpanded,
                             onMenuTap: () {
@@ -271,42 +277,37 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                     ),
 
-                    // Inline Cascading Dropdown Bar
                     if (_isMenuExpanded) ...[
                       const Divider(
                           color: Color(0xFFE2E8F0), height: 1, thickness: 1),
 
-                      // 1. Profile Link
                       _CascadingMenuRow(
                         icon: Icons.person_outline,
-                        title: 'Profile',
-                        subtitle: 'View details',
+                        title: settings.t('profile'),
+                        subtitle: settings.t('view_details'),
                         onTap: _openProfileModal,
                       ),
 
-                      // 2. Direct Dark Mode Toggle Row
-
-                      // 3. Direct 3-Way Inline Language Toggle Row
                       Container(
                         padding: const EdgeInsets.symmetric(
                             vertical: 10, horizontal: 16),
                         decoration: const BoxDecoration(
                           border: Border(
                             bottom:
-                                BorderSide(color: Color(0xFFF1F5F9), width: 1),
+                            BorderSide(color: Color(0xFFF1F5F9), width: 1),
                           ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Row(
+                            Row(
                               children: [
-                                Icon(Icons.language_outlined,
+                                const Icon(Icons.language_outlined,
                                     color: Color(0xFF093582), size: 22),
-                                SizedBox(width: 14),
+                                const SizedBox(width: 14),
                                 Text(
-                                  'Language',
-                                  style: TextStyle(
+                                  settings.t('language'),
+                                  style: const TextStyle(
                                     color: Color(0xFF11221D),
                                     fontSize: 15,
                                     fontWeight: FontWeight.w600,
@@ -318,16 +319,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             SizedBox(
                               height: 32,
                               child: ToggleButtons(
-                                isSelected: [
-                                  _selectedLanguage == 'Bisaya',
-                                  _selectedLanguage == 'Tagalog',
-                                  _selectedLanguage == 'English',
-                                ],
+                                isSelected: AppLanguage.values
+                                    .map((lang) => settings.language == lang)
+                                    .toList(),
                                 onPressed: (int index) {
-                                  setState(() {
-                                    _selectedLanguage =
-                                        ['Bisaya', 'Tagalog', 'English'][index];
-                                  });
+                                  settings.setLanguage(AppLanguage.values[index]);
                                 },
                                 fillColor: const Color(0xFF093582),
                                 selectedColor: Colors.white,
@@ -337,52 +333,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                   minHeight: 32,
                                   minWidth: 0,
                                 ),
-                                children: const [
-                                  Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 10),
+                                children: AppLanguage.values.map((lang) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
                                     child: Text(
-                                      'Bisaya',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          fontFamily: 'Rubik',
-                                          fontWeight: FontWeight.w600),
+                                      lang.nativeLabel,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontFamily: 'Rubik',
+                                        fontWeight: FontWeight.w600,
+                                      ),
                                     ),
-                                  ),
-                                  Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 10),
-                                    child: Text(
-                                      'Tagalog',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          fontFamily: 'Rubik',
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding:
-                                        EdgeInsets.symmetric(horizontal: 10),
-                                    child: Text(
-                                      'English',
-                                      style: TextStyle(
-                                          fontSize: 12,
-                                          fontFamily: 'Rubik',
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                  ),
-                                ],
+                                  );
+                                }).toList(),
                               ),
                             ),
                           ],
                         ),
                       ),
 
-                      // 4. Log Out Link
                       _CascadingMenuRow(
                         icon: Icons.logout,
-                        title: 'Log Out',
-                        subtitle: 'Sign out',
+                        title: settings.t('log_out'),
+                        subtitle: settings.t('sign_out'),
                         isDestructive: true,
                         onTap: _openLogoutModal,
                       ),
@@ -391,16 +364,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              // Rest of Screen Content with Standard Page Padding
               Padding(
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 2. Available Benefits Section
                     _SectionHeader(
-                      title: 'Available Benefits',
+                      title: settings.t('available_benefits'),
+                      viewAllLabel: settings.t('view_all'),
                       onViewAll: widget.onViewAllBenefits,
                     ),
                     const SizedBox(height: 14),
@@ -420,7 +392,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           return Padding(
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             child: Text(
-                              'Error loading benefits: ${snapshot.error}',
+                              '${settings.t('error_loading_benefits')}: ${snapshot.error}',
                               style: const TextStyle(
                                   color: Colors.red, fontSize: 13),
                             ),
@@ -428,22 +400,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         }
 
                         if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return const Text(
-                              'No available benefits at this time.');
+                          return Text(settings.t('no_benefits'));
                         }
 
                         final displayedBenefits =
-                            snapshot.data!.take(3).toList();
+                        snapshot.data!.take(3).toList();
 
                         return Column(
                           children: [
                             for (int i = 0;
-                                i < displayedBenefits.length;
-                                i++) ...[
+                            i < displayedBenefits.length;
+                            i++) ...[
                               _BenefitCard(
                                 title: displayedBenefits[i].title,
                                 dateAndLocation:
-                                    displayedBenefits[i].dateAndLocation,
+                                displayedBenefits[i].dateAndLocation,
                                 icon: displayedBenefits[i].iconData,
                               ),
                               if (i < displayedBenefits.length - 1)
@@ -455,13 +426,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // 3. Action / Function Squares
                     Row(
                       children: [
                         Expanded(
                           child: _ActionTile(
-                            title: 'Voice Assistant',
-                            subtitle: 'Tingog Tabang',
+                            title: settings.t('voice_assistant'),
+                            subtitle: settings.t('voice_assistant_sub'),
                             icon: Icons.mic,
                             bgColor: const Color(0xFFD2ECFF),
                             accentColor: const Color(0xFF0284C7),
@@ -472,8 +442,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(width: 14),
                         Expanded(
                           child: _ActionTile(
-                            title: 'My Benefits',
-                            subtitle: 'Mga Benepisyo',
+                            title: settings.t('my_benefits'),
+                            subtitle: settings.t('my_benefits_sub'),
                             icon: Icons.card_membership,
                             bgColor: const Color(0xFFFFE7D2),
                             accentColor: const Color(0xFFD35400),
@@ -494,10 +464,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// =============================================================================
-// SUB-WIDGET DEFINITIONS
-// =============================================================================
-
 class _ProfileDetailRow extends StatelessWidget {
   const _ProfileDetailRow({
     required this.label,
@@ -517,8 +483,8 @@ class _ProfileDetailRow extends StatelessWidget {
         border: isLast
             ? null
             : const Border(
-                bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
-              ),
+          bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -554,6 +520,7 @@ class _ProfileDetailRow extends StatelessWidget {
 
 class _GreetingHeader extends StatelessWidget {
   const _GreetingHeader({
+    required this.greetingPrefix,
     required this.userName,
     required this.subtitle,
     required this.avatarUrl,
@@ -561,6 +528,7 @@ class _GreetingHeader extends StatelessWidget {
     this.onMenuTap,
   });
 
+  final String greetingPrefix;
   final String userName;
   final String subtitle;
   final String avatarUrl;
@@ -584,7 +552,7 @@ class _GreetingHeader extends StatelessWidget {
             avatarUrl,
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) =>
-                const Icon(Icons.person, color: Color(0xFF093582)),
+            const Icon(Icons.person, color: Color(0xFF093582)),
           ),
         ),
         const SizedBox(width: 12),
@@ -593,7 +561,7 @@ class _GreetingHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Maayong adlaw, $userName!',
+                '$greetingPrefix $userName!',
                 style: const TextStyle(
                   color: Color(0xFF11221D),
                   fontSize: 19,
@@ -698,10 +666,12 @@ class _CascadingMenuRow extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.title,
+    required this.viewAllLabel,
     required this.onViewAll,
   });
 
   final String title;
+  final String viewAllLabel;
   final VoidCallback onViewAll;
 
   @override
@@ -720,9 +690,9 @@ class _SectionHeader extends StatelessWidget {
         ),
         InkWell(
           onTap: onViewAll,
-          child: const Text(
-            'view all >',
-            style: TextStyle(
+          child: Text(
+            viewAllLabel,
+            style: const TextStyle(
               fontSize: 14,
               color: AppColors.dashboardAccent,
               fontWeight: FontWeight.w500,
