@@ -13,7 +13,7 @@ import '../services/live_tts_player.dart';
 import '../theme/app_colors.dart';
 import '../widgets/screen_header.dart';
 
-enum _VoiceState { idle, listening, answering }
+enum _VoiceState { idle, listening, processing, answering }
 
 class _SuggestedQuestion {
   const _SuggestedQuestion(this.title, this.subtitle);
@@ -26,10 +26,6 @@ const _suggestedQuestions = [
   _SuggestedQuestion('Mag-pa Check up', 'libreang pa check up sa cit...'),
   _SuggestedQuestion('Senior Discount', 'unsaon pag-gamit sa Senior C...'),
 ];
-
-/// How long to hold the mic screen after the final transcript lands before
-/// moving on to the answer view.
-const _settleDelay = Duration(milliseconds: 500);
 
 class VoiceAssistantScreen extends StatefulWidget {
   const VoiceAssistantScreen({super.key});
@@ -95,6 +91,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void initState() {
     super.initState();
     _initSpeech();
+    // Warm the profile cache so the first ask has no hidden network delay
+    // before the chat stream opens.
+    unawaited(ProfileService.loadProfileOrNull());
   }
 
   Future<void> _initSpeech() async {
@@ -121,7 +120,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     if (question.isNotEmpty) {
       _settleTimer?.cancel();
       _relistenTimer?.cancel();
-      if (_state == _VoiceState.listening) {
+      if (_state == _VoiceState.listening || _state == _VoiceState.processing) {
         _ask(question);
       }
       return;
@@ -137,7 +136,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
           Timer(const Duration(milliseconds: 3500), _finalizeSession);
       return;
     }
-    if (_state == _VoiceState.listening) {
+    if (_state == _VoiceState.listening || _state == _VoiceState.processing) {
       setState(() => _state = _VoiceState.idle);
       _showNotCaught();
     }
@@ -146,10 +145,13 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void _showNotCaught() {
     debugPrint('SHOW NOT CAUGHT (state=$_state stop=$_stopRequested '
         'transcript=$_fullTranscript)');
-    // Only ever surface this while we're still on the listening screen.
-    // If the answer pane is already showing, a stale timer/error must not
-    // spam a contradictory "didn't catch" snackbar.
-    if (_state != _VoiceState.listening) return;
+    // Only ever surface this while the mic session is still wrapping up
+    // (listening, or the brief processing pane). If the answer pane is
+    // already showing, a stale timer/error must not spam a contradictory
+    // "didn't catch" snackbar.
+    if (_state != _VoiceState.listening && _state != _VoiceState.processing) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('I didn\'t catch that. Please try again.'),
@@ -262,7 +264,10 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void _finalizeSession() {
     _settleTimer?.cancel();
     _relistenTimer?.cancel();
-    if (!mounted || _state != _VoiceState.listening) return;
+    if (!mounted ||
+        (_state != _VoiceState.listening && _state != _VoiceState.processing)) {
+      return;
+    }
     final question = _fullTranscript.trim();
     if (question.isEmpty) {
       setState(() => _state = _VoiceState.idle);
@@ -276,6 +281,14 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _stopRequested = true;
     _relistenTimer?.cancel();
     _settleTimer?.cancel();
+
+    // INSTANT feedback: switch to the "reading your question" pane right
+    // away so the user knows their query was heard, instead of a silent
+    // wait while the engine finalizes.
+    if (mounted && _state == _VoiceState.listening) {
+      setState(() => _state = _VoiceState.processing);
+    }
+
     try {
       if (_speech.isListening) {
         await _speech.stop(); // fires a final result → settle → ask
@@ -283,14 +296,11 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     } catch (e) {
       debugPrint('STT stop failed: $e');
     }
-    if (_speech.isListening) {
-      // Belt-and-suspenders: if no final event arrives, don't hang.
-      _settleTimer =
-          Timer(const Duration(milliseconds: 2500), _finalizeSession);
-    } else {
-      // Engine already ended on its own (silence final): settle now.
-      _settleTimer = Timer(_settleDelay, _finalizeSession);
-    }
+    // The final result (real, or the plugin's fabricated one at its
+    // ~3s finalTimeout) is still on its way. Fall back only if NOTHING
+    // arrives — never finalize early or the UI blips back to "Try asking"
+    // before the question lands.
+    _settleTimer = Timer(const Duration(milliseconds: 3500), _finalizeSession);
   }
 
   // ------------------------------------------------------------ chat ------
@@ -459,6 +469,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
                   _VoiceState.listening => _ListeningBody(
                       onMicTap: _stopListening,
                     ),
+                  _VoiceState.processing => const _ProcessingBody(),
                   _VoiceState.answering => _AnsweringBody(
                       onMicTap: _reset,
                       question: _question,
@@ -596,6 +607,50 @@ class _ListeningBody extends StatelessWidget {
                   SizedBox(height: 6),
                   Text(
                     'Tap the mic again when you\'re finished.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 15, color: AppColors.slateText),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Shown the instant the user taps the mic to stop: confirms the query
+/// was heard while the engine finalizes the transcript.
+class _ProcessingBody extends StatelessWidget {
+  const _ProcessingBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(32, 0, 32, 40),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ListeningPulse(),
+                  SizedBox(height: 20),
+                  Text(
+                    'Reading what you said…',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                      height: 1.4,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'One moment, Lola/Lolo.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 15, color: AppColors.slateText),
                   ),
