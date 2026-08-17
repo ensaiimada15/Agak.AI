@@ -267,7 +267,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             greetingPrefix: settings.t('greeting_prefix'),
                             userName: displayName,
                             subtitle: settings.t('greeting_subtitle'),
-                            avatarUrl: 'https://placehold.co/52x52.png',
                             isMenuExpanded: _isMenuExpanded,
                             onMenuTap: () {
                               if (widget.onMenuTap != null) {
@@ -524,7 +523,6 @@ class _GreetingHeader extends StatelessWidget {
     required this.greetingPrefix,
     required this.userName,
     required this.subtitle,
-    required this.avatarUrl,
     required this.isMenuExpanded,
     this.onMenuTap,
   });
@@ -532,7 +530,6 @@ class _GreetingHeader extends StatelessWidget {
   final String greetingPrefix;
   final String userName;
   final String subtitle;
-  final String avatarUrl;
   final bool isMenuExpanded;
   final VoidCallback? onMenuTap;
 
@@ -540,20 +537,34 @@ class _GreetingHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
+        // Gender-neutral 2D avatar: soft blue circle + white person
+        // silhouette. No photo, no network — works offline, works for
+        // any Lola or Lolo.
         Container(
           width: 52,
           height: 52,
-          decoration: BoxDecoration(
+          decoration: const BoxDecoration(
             shape: BoxShape.circle,
-            color: const Color(0xFFE3EFEA),
-            border: Border.all(color: const Color(0xFF093582), width: 2.6),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF093582), Color(0xFF0284C7)],
+            ),
+            border: Border.fromBorderSide(BorderSide(
+              color: Colors.white,
+              width: 2.6,
+            )),
+            boxShadow: [
+              BoxShadow(
+                  color: Color(0x22000000),
+                  blurRadius: 4,
+                  offset: Offset(0, 2)),
+            ],
           ),
-          clipBehavior: Clip.antiAlias,
-          child: Image.network(
-            avatarUrl,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
-                const Icon(Icons.person, color: Color(0xFF093582)),
+          child: const Icon(
+            Icons.person_rounded,
+            color: Colors.white,
+            size: 34,
           ),
         ),
         const SizedBox(width: 12),
