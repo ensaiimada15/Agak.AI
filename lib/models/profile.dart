@@ -10,7 +10,12 @@ class Profile {
     required this.birthday,
     required this.address,
     this.gender = '',
+    this.id = 0,
   });
+
+  /// Primary key in the `user` table (int). Sent with each chat request so
+  /// the backend can persist the conversation + notes for THIS senior.
+  final int id;
 
   final String name;
   final String email;
@@ -40,6 +45,7 @@ class Profile {
         '';
 
     return Profile(
+      id: (json['id'] as num?)?.toInt() ?? 0,
       name: json['name'] as String? ?? '',
       email: json['email'] as String? ?? '',
       seniorId: rawSeniorId,

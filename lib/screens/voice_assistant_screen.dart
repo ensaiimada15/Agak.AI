@@ -336,6 +336,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     final user = profile == null
         ? null
         : <String, Object?>{
+            'id': profile.id,
             'name': profile.name,
             'age': profile.age,
             'gender': profile.gender,
@@ -392,6 +393,104 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     });
   }
 
+  /// `?` button: reveals the senior's rolling support notes (`user_notes`),
+  /// maintained by the LLM after every exchange.
+  void _openNotes() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.62 + bottomInset,
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.psychology_outlined,
+                      color: AppColors.navy, size: 24),
+                  SizedBox(width: 10),
+                  Text('Support notes',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'How AgakAI is getting to know Lola/Lolo — updated after '
+                'each conversation.',
+                style: TextStyle(fontSize: 13, color: AppColors.slateText),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: FutureBuilder<String?>(
+                  future: ProfileService.loadUserNotes(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final notes = snapshot.data;
+                    if (notes == null) {
+                      return const Center(
+                        child: Text('Could not load notes.',
+                            style: TextStyle(color: AppColors.slateText)),
+                      );
+                    }
+                    if (notes.trim().isEmpty) {
+                      return const Center(
+                        child: Text('No notes yet — start a conversation.',
+                            style: TextStyle(color: AppColors.slateText)),
+                      );
+                    }
+                    return SingleChildScrollView(
+                      child: MarkdownBody(
+                        data: notes,
+                        selectable: true,
+                        styleSheet:
+                            MarkdownStyleSheet.fromTheme(Theme.of(context))
+                                .copyWith(
+                          p: const TextStyle(
+                              fontSize: 15,
+                              color: AppColors.slateText,
+                              height: 1.55),
+                          strong: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink),
+                          listBullet: const TextStyle(
+                              fontSize: 15, color: AppColors.slateText),
+                          h1: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navy),
+                          h2: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navy),
+                          h3: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navy),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _reset() async {
     _chatGen++; // discard any in-flight stream
     _settleTimer?.cancel();
@@ -436,10 +535,10 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
             ScreenHeader(
               title: 'Ask Anything',
               subtitle: 'Ako ang imong OSCA assistant',
-              trailing: _state == _VoiceState.idle
-                  ? _CircleButton(
-                      icon: Icons.help_outline_rounded, onTap: () {})
-                  : null,
+              trailing: _CircleButton(
+                icon: Icons.help_outline_rounded,
+                onTap: _openNotes,
+              ),
             ),
             Expanded(
               // Gentle crossfade between idle / listening / answering so

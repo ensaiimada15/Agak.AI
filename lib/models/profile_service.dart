@@ -50,6 +50,26 @@ class ProfileService {
     }
   }
 
+  /// Fetches the senior's `user_notes` (the LLM's rolling psychological
+  /// summary) fresh from the DB — it changes after every exchange.
+  static Future<String?> loadUserNotes() async {
+    final id = _currentUserId;
+    if (id == null) return null;
+    try {
+      final supabase = Supabase.instance.client;
+      final data = await supabase
+          .from('user')
+          .select('user_notes')
+          .eq('id', id)
+          .maybeSingle();
+      return (data?['user_notes'] as String?)?.trim() ?? '';
+    } catch (e, st) {
+      debugPrint('LOAD USER NOTES FAILED: $e');
+      debugPrintStack(stackTrace: st);
+      return null;
+    }
+  }
+
   /// Clear cache + current user (e.g. on log out).
   static void clearCache() {
     _cachedProfile = null;

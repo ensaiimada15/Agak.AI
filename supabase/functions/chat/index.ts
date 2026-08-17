@@ -99,6 +99,115 @@ async function loadBenefitsContext(): Promise<string> {
 
 interface HistoryMsg { role: "user" | "assistant"; content: string }
 
+// ---- conversation memory (linear, per-user, jsonb on user) ------------
+// Keeps the last HISTORY_CAP turns in the user row, sends the last
+// HISTORY_SEND to the LLM, and after every exchange REVISES user_notes
+// (a compacted psychological summary) via a background task.
+const HISTORY_CAP = 100
+const HISTORY_SEND = 12
+const NOTES_CHARS = 1200
+
+function memoryClient() {
+  return createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  )
+}
+
+async function loadHistory(userId: number): Promise<HistoryMsg[]> {
+  try {
+    const { data } = await memoryClient()
+      .from("user")
+      .select("conversation_history")
+      .eq("id", userId)
+      .maybeSingle()
+    const raw = (data as any)?.conversation_history
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter(
+        (m: any) =>
+          m &&
+          (m.role === "user" || m.role === "assistant") &&
+          typeof m.content === "string",
+      )
+      .map((m: any) => ({ role: m.role, content: m.content }))
+  } catch (e) {
+    console.warn("loadHistory failed:", e)
+    return []
+  }
+}
+
+async function saveHistory(userId: number, history: HistoryMsg[]) {
+  const trimmed = history.slice(-HISTORY_CAP)
+  await memoryClient()
+    .from("user")
+    .update({ conversation_history: trimmed })
+    .eq("id", userId)
+}
+
+/// Background task: rewrite user_notes as a compacted psychological
+/// summary of the senior, incorporating the previous notes + the recent
+/// conversation. Replaces (not appends) so the field stays bounded.
+async function reviseNotes(userId: number, history: HistoryMsg[]) {
+  try {
+    const { data } = await memoryClient()
+      .from("user")
+      .select("user_notes")
+      .eq("id", userId)
+      .maybeSingle()
+    const currentNotes: string = ((data as any)?.user_notes as string) ?? ""
+    const recent = history
+      .slice(-30)
+      .map((m) => `${m.role}: ${m.content}`)
+      .join("\n")
+
+    const notes = await llm(
+      [
+        {
+          role: "system" as const,
+          content:
+            "You write psychological support notes for a senior-care worker " +
+            "about the senior in a voice assistant program. Capture: how they " +
+            "communicate (language, tone), emotional state/indicators (calm, " +
+            "frustrated, confused, grateful), recurring concerns or topics, " +
+            "cognitive/needs patterns, and how best to support them. Be " +
+            "professional, respectful, factual, and kind. Keep it under " +
+            `${NOTES_CHARS} characters. REVISE: incorporate the previous notes ` +
+            "instead of repeating them — the field must not grow. " +
+            "FORMAT: use simple Markdown — short headings (##), bullet lists " +
+            "(-), and bold for key points, so it renders nicely.",
+        },
+        {
+          role: "user" as const,
+          content:
+            `Current notes:\n${currentNotes || "(none)"}\n\n` +
+            `Recent conversation:\n${recent}`,
+        },
+      ],
+      { temperature: 0.3 },
+    )
+
+    await memoryClient()
+      .from("user")
+      .update({ user_notes: notes.slice(0, NOTES_CHARS) })
+      .eq("id", userId)
+  } catch (e) {
+    console.warn("reviseNotes failed:", e)
+  }
+}
+
+/// Runs a background task after the response is sent (Supabase edge
+/// runtime), so analysis never delays the answer or the voice.
+function runBackground(task: Promise<void>) {
+  const edge = (globalThis as any).EdgeRuntime
+  if (edge?.waitUntil) {
+    edge.waitUntil(task)
+  } else {
+    // Fallback: best-effort fire-and-forget.
+    task.catch(() => {})
+  }
+}
+
 // ---- personalization: the logged-in senior ----------------
 // The frontend sends the member's profile ({name, age, gender, address})
 // so AgakAI can greet them by name and tailor answers to their location.
@@ -178,13 +287,28 @@ serve(async (req) => {
       }
       if (!question.trim()) throw new Error("No speech detected")
 
+      const userId = (user as any)?.id
+      const storedHistory =
+        typeof userId === "number" ? await loadHistory(userId) : []
       const messages = [
         { role: "system" as const, content: persona.replace("{{BENEFITS}}", benefitsContext) + memberContext(user) },
         ...((history ?? []) as HistoryMsg[]),
+        ...storedHistory,
         { role: "user" as const, content: question },
       ]
       const answer = await llm(messages)
       const audio = await ttsFull(answer)
+
+      // Persist the exchange + revise the psychological notes (background).
+      if (typeof userId === "number") {
+        const fullHistory: HistoryMsg[] = [
+          ...storedHistory,
+          { role: "user", content: question },
+          { role: "assistant", content: answer },
+        ]
+        await saveHistory(userId, fullHistory)
+        runBackground(reviseNotes(userId, fullHistory))
+      }
 
       return new Response(
         JSON.stringify({
@@ -220,10 +344,15 @@ serve(async (req) => {
             // Frontend can show the transcript immediately.
             send("transcript", { question })
 
+            const userId = (user as any)?.id
+            const storedHistory =
+              typeof userId === "number" ? await loadHistory(userId) : []
+
             const [persona, benefitsContext] = await Promise.all([personaPromise, benefitsPromise])
             const messages = [
               { role: "system" as const, content: persona.replace("{{BENEFITS}}", benefitsContext) + memberContext(user) },
               ...((history ?? []) as HistoryMsg[]),
+              ...storedHistory,
               { role: "user" as const, content: question },
             ]
 
@@ -286,6 +415,18 @@ serve(async (req) => {
             await ttsDone
 
             send("done", { question, answer })
+
+            // Persist the exchange + revise the psychological notes
+            // (background — never delays the answer or the voice).
+            if (typeof userId === "number") {
+              const fullHistory: HistoryMsg[] = [
+                ...storedHistory,
+                { role: "user", content: question },
+                { role: "assistant", content: answer },
+              ]
+              await saveHistory(userId, fullHistory)
+              runBackground(reviseNotes(userId, fullHistory))
+            }
             controller.close()
           } catch (error) {
             console.error("chat stream error:", error)
