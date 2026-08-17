@@ -54,16 +54,21 @@ class BenefitService {
   /// specifically, falls back to the full list so the screen is never empty.
   static Future<List<Benefit>> loadRelevantBenefits(String? address) async {
     final all = await loadBenefits();
-    final tokens = _addressTokens(address ?? '');
-    if (tokens.isEmpty) return all;
-
-    final relevant = all.where((b) {
-      final lgu = b.lgu.toLowerCase();
-      if (lgu.startsWith('national') || lgu.contains('all lgu')) return true;
-      return tokens.any(lgu.contains);
-    }).toList();
-
+    if ((address ?? '').trim().isEmpty) return all;
+    final relevant = all.where((b) => isRelevantFor(b, address)).toList();
     return relevant.isEmpty ? all : relevant;
+  }
+
+  /// Is a single benefit relevant to the senior at [address]?
+  /// Used both by the benefits filter and by the realtime "you might like
+  /// this" notification for newly inserted benefits.
+  static bool isRelevantFor(Benefit benefit, String? address) {
+    final tokens = _addressTokens(address ?? '');
+    if (tokens.isEmpty)
+      return true; // no address → treat everything as relevant
+    final lgu = benefit.lgu.toLowerCase();
+    if (lgu.startsWith('national') || lgu.contains('all lgu')) return true;
+    return tokens.any(lgu.contains);
   }
 
   /// Pulls candidate place names out of an address like

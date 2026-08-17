@@ -1,6 +1,6 @@
 {
-    "name": "agak_ai",
-    "short_name": "agak_ai",
+    "name": "AgakAI",
+    "short_name": "AgakAI",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

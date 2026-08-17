@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "agak_ai" "\0"
+            VALUE "FileDescription", "AgakAI" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "agak_ai" "\0"
+            VALUE "InternalName", "AgakAI" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "agak_ai.exe" "\0"
-            VALUE "ProductName", "agak_ai" "\0"
+            VALUE "OriginalFilename", "AgakAI.exe" "\0"
+            VALUE "ProductName", "AgakAI" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

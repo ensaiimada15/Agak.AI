@@ -25,6 +25,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.8
 
 flutter:
   uses-material-design: true
@@ -35,4 +37,27 @@ flutter:
     - assets/images/logo.png
     - assets/images/avatar.png
     - assets/images/dashboard_hero.png
+    - assets/images/icon.png
+    - assets/images/splash_logo.png
     - assets/data/benefits.json
+
+# App launcher icon (generated from assets/images/icon.png):
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/icon.png
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: assets/images/icon.png
+  min_sdk_android: 21
+
+# Native splash / startup screen (logo on white, also covers Android 12+):
+#   dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#FFFFFF"
+  image: assets/images/splash_logo.png
+  android_12:
+    color: "#FFFFFF"
+    image: assets/images/splash_logo.png
+  android: true
+  ios: true

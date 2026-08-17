@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../settings/app_settings.dart';// Navigates up from lib/screens to lib/
-import '../main.dart';         // Navigates up from lib/screens to lib/ to get AppSettingsScope
+import '../settings/app_settings.dart'; // Navigates up from lib/screens to lib/
+import '../main.dart'; // Navigates up from lib/screens to lib/ to get AppSettingsScope
 import '../models/benefit.dart';
 import '../models/benefit_service.dart';
 import '../models/profile.dart';
@@ -180,17 +180,23 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _ProfileDetailRow(label: settings.t('name'), value: profile.name),
-                _ProfileDetailRow(label: settings.t('senior_id'), value: profile.seniorId),
-                _ProfileDetailRow(label: settings.t('mobile_no'), value: profile.mobileNo),
+                _ProfileDetailRow(
+                    label: settings.t('name'), value: profile.name),
+                _ProfileDetailRow(
+                    label: settings.t('senior_id'), value: profile.seniorId),
+                _ProfileDetailRow(
+                    label: settings.t('mobile_no'), value: profile.mobileNo),
                 _ProfileDetailRow(
                   label: settings.t('age'),
                   value: settings.t('age_years', {'age': '${profile.age}'}),
                 ),
                 _ProfileDetailRow(label: 'Gender', value: profile.gender),
-                _ProfileDetailRow(label: settings.t('birthday'), value: profile.birthday),
                 _ProfileDetailRow(
-                    label: settings.t('address'), value: profile.address, isLast: true),
+                    label: settings.t('birthday'), value: profile.birthday),
+                _ProfileDetailRow(
+                    label: settings.t('address'),
+                    value: profile.address,
+                    isLast: true),
               ],
             ),
           );
@@ -276,25 +282,22 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                       },
                     ),
-
                     if (_isMenuExpanded) ...[
                       const Divider(
                           color: Color(0xFFE2E8F0), height: 1, thickness: 1),
-
                       _CascadingMenuRow(
                         icon: Icons.person_outline,
                         title: settings.t('profile'),
                         subtitle: settings.t('view_details'),
                         onTap: _openProfileModal,
                       ),
-
                       Container(
                         padding: const EdgeInsets.symmetric(
                             vertical: 10, horizontal: 16),
                         decoration: const BoxDecoration(
                           border: Border(
                             bottom:
-                            BorderSide(color: Color(0xFFF1F5F9), width: 1),
+                                BorderSide(color: Color(0xFFF1F5F9), width: 1),
                           ),
                         ),
                         child: Row(
@@ -323,7 +326,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     .map((lang) => settings.language == lang)
                                     .toList(),
                                 onPressed: (int index) {
-                                  settings.setLanguage(AppLanguage.values[index]);
+                                  settings
+                                      .setLanguage(AppLanguage.values[index]);
                                 },
                                 fillColor: const Color(0xFF093582),
                                 selectedColor: Colors.white,
@@ -335,7 +339,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 children: AppLanguage.values.map((lang) {
                                   return Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10),
                                     child: Text(
                                       lang.nativeLabel,
                                       style: const TextStyle(
@@ -351,7 +356,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
-
                       _CascadingMenuRow(
                         icon: Icons.logout,
                         title: settings.t('log_out'),
@@ -363,10 +367,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-
               Padding(
                 padding:
-                const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -376,7 +379,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       onViewAll: widget.onViewAllBenefits,
                     ),
                     const SizedBox(height: 14),
-
                     FutureBuilder<List<Benefit>>(
                       future: _benefitsFuture,
                       builder: (context, snapshot) {
@@ -404,17 +406,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         }
 
                         final displayedBenefits =
-                        snapshot.data!.take(3).toList();
+                            snapshot.data!.take(3).toList();
 
                         return Column(
                           children: [
                             for (int i = 0;
-                            i < displayedBenefits.length;
-                            i++) ...[
+                                i < displayedBenefits.length;
+                                i++) ...[
                               _BenefitCard(
                                 title: displayedBenefits[i].title,
                                 dateAndLocation:
-                                displayedBenefits[i].dateAndLocation,
+                                    displayedBenefits[i].dateAndLocation,
                                 icon: displayedBenefits[i].iconData,
                               ),
                               if (i < displayedBenefits.length - 1)
@@ -425,7 +427,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                     ),
                     const SizedBox(height: 28),
-
                     Row(
                       children: [
                         Expanded(
@@ -483,8 +484,8 @@ class _ProfileDetailRow extends StatelessWidget {
         border: isLast
             ? null
             : const Border(
-          bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
-        ),
+                bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1),
+              ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -552,7 +553,7 @@ class _GreetingHeader extends StatelessWidget {
             avatarUrl,
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) =>
-            const Icon(Icons.person, color: Color(0xFF093582)),
+                const Icon(Icons.person, color: Color(0xFF093582)),
           ),
         ),
         const SizedBox(width: 12),
@@ -678,16 +679,24 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 19,
-            fontFamily: 'LINE Seed Sans',
-            fontWeight: FontWeight.w600,
-            color: Colors.black,
+        // Expanded + ellipsis so long titles never overflow on narrow
+        // screens or with large system fonts (senior devices).
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 19,
+              fontFamily: 'LINE Seed Sans',
+              fontWeight: FontWeight.w600,
+              color: Colors.black,
+            ),
           ),
         ),
+        const SizedBox(width: 10),
         InkWell(
           onTap: onViewAll,
           child: Text(
@@ -807,7 +816,9 @@ class _ActionTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          height: 150,
+          // min-height (not fixed) so tiles grow gracefully when the
+          // system font scale is large instead of overflowing.
+          constraints: const BoxConstraints(minHeight: 150),
           padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
