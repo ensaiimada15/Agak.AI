@@ -285,272 +285,331 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                       },
                     ),
-                    if (_isMenuExpanded) ...[
-                      const Divider(
-                          color: Color(0xFFE2E8F0), height: 1, thickness: 1),
-                      _CascadingMenuRow(
-                        icon: Icons.person_outline,
-                        title: settings.t('profile'),
-                        subtitle: settings.t('view_details'),
-                        onTap: _openProfileModal,
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 10, horizontal: 16),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            bottom:
-                                BorderSide(color: Color(0xFFF1F5F9), width: 1),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.language_outlined,
-                                    color: Color(0xFF093582), size: 22),
-                                const SizedBox(width: 14),
-                                Text(
-                                  settings.t('language'),
-                                  style: const TextStyle(
-                                    color: Color(0xFF11221D),
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                    fontFamily: 'Rubik',
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(
-                              height: 32,
-                              // Flexible + FittedBox: the three language
-                              // buttons scale down to fit even when the
-                              // enlarged text setting is on (no overflow).
-                              child: Flexible(
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  child: ToggleButtons(
-                                    isSelected: AppLanguage.values
-                                        .map(
-                                            (lang) => settings.language == lang)
-                                        .toList(),
-                                    onPressed: (int index) {
-                                      settings.setLanguage(
-                                          AppLanguage.values[index]);
-                                    },
-                                    fillColor: const Color(0xFF093582),
-                                    selectedColor: Colors.white,
-                                    color: const Color(0xFF11221D),
-                                    borderRadius: BorderRadius.zero,
-                                    constraints: const BoxConstraints(
-                                      minHeight: 32,
-                                      minWidth: 0,
-                                    ),
-                                    children: AppLanguage.values.map((lang) {
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 10),
-                                        child: Text(
-                                          lang.nativeLabel,
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontFamily: 'Rubik',
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 10, horizontal: 16),
-                        decoration: const BoxDecoration(
-                          border: Border(
-                            bottom:
-                                BorderSide(color: Color(0xFFF1F5F9), width: 1),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.text_fields,
-                                color: Color(0xFF093582), size: 22),
-                            const SizedBox(width: 14),
-                            Expanded(
+                    // Inline Cascading Dropdown Bar — animated: the menu
+                    // gently grows open and fades the rows in when toggled
+                    // (AnimatedSize + opacity), then shrinks back on close.
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: _isMenuExpanded
+                          ? TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0, end: 1),
+                              duration: const Duration(milliseconds: 280),
+                              curve: Curves.easeOut,
+                              builder: (context, t, child) =>
+                                  Opacity(opacity: t, child: child),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
-                                    settings.t('text_size'),
-                                    style: const TextStyle(
-                                      color: Color(0xFF11221D),
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      fontFamily: 'Rubik',
-                                    ),
+                                  const Divider(
+                                      color: Color(0xFFE2E8F0),
+                                      height: 1,
+                                      thickness: 1),
+                                  _CascadingMenuRow(
+                                    icon: Icons.person_outline,
+                                    title: settings.t('profile'),
+                                    subtitle: settings.t('view_details'),
+                                    onTap: _openProfileModal,
                                   ),
-                                  const SizedBox(height: 6),
-                                  SizedBox(
-                                    height: 32,
-                                    child: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: ToggleButtons(
-                                        isSelected: [
-                                          !settings.largeText,
-                                          settings.largeText,
-                                        ],
-                                        onPressed: (int index) =>
-                                            settings.setLargeText(index == 1),
-                                        fillColor: const Color(0xFF093582),
-                                        selectedColor: Colors.white,
-                                        color: const Color(0xFF11221D),
-                                        borderRadius: BorderRadius.circular(8),
-                                        constraints: const BoxConstraints(
-                                          minHeight: 32,
-                                          minWidth: 0,
-                                        ),
-                                        children: [
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12),
-                                            child: Text(
-                                              settings.t('text_size_standard'),
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                fontFamily: 'Rubik',
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12),
-                                            child: Text(
-                                              settings.t('text_size_enlarged'),
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                fontFamily: 'Rubik',
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10, horizontal: 16),
+                                    decoration: const BoxDecoration(
+                                      border: Border(
+                                        bottom: BorderSide(
+                                            color: Color(0xFFF1F5F9), width: 1),
                                       ),
                                     ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.language_outlined,
+                                                color: Color(0xFF093582),
+                                                size: 22),
+                                            const SizedBox(width: 14),
+                                            Text(
+                                              settings.t('language'),
+                                              style: const TextStyle(
+                                                color: Color(0xFF11221D),
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w600,
+                                                fontFamily: 'Rubik',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(
+                                          height: 32,
+                                          child: Flexible(
+                                            child: FittedBox(
+                                              fit: BoxFit.scaleDown,
+                                              child: ToggleButtons(
+                                                isSelected: AppLanguage.values
+                                                    .map((lang) =>
+                                                        settings.language ==
+                                                        lang)
+                                                    .toList(),
+                                                onPressed: (int index) {
+                                                  settings.setLanguage(
+                                                      AppLanguage
+                                                          .values[index]);
+                                                },
+                                                fillColor:
+                                                    const Color(0xFF093582),
+                                                selectedColor: Colors.white,
+                                                color: const Color(0xFF11221D),
+                                                borderRadius: BorderRadius.zero,
+                                                constraints:
+                                                    const BoxConstraints(
+                                                  minHeight: 32,
+                                                  minWidth: 0,
+                                                ),
+                                                children: AppLanguage.values
+                                                    .map((lang) {
+                                                  return Padding(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                        horizontal: 10),
+                                                    child: Text(
+                                                      lang.nativeLabel,
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                        fontFamily: 'Rubik',
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  );
+                                                }).toList(),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10, horizontal: 16),
+                                    decoration: const BoxDecoration(
+                                      border: Border(
+                                        bottom: BorderSide(
+                                            color: Color(0xFFF1F5F9), width: 1),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.text_fields,
+                                            color: Color(0xFF093582), size: 22),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                settings.t('text_size'),
+                                                style: const TextStyle(
+                                                  color: Color(0xFF11221D),
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontFamily: 'Rubik',
+                                                ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              SizedBox(
+                                                height: 32,
+                                                child: FittedBox(
+                                                  fit: BoxFit.scaleDown,
+                                                  child: ToggleButtons(
+                                                    isSelected: [
+                                                      !settings.largeText,
+                                                      settings.largeText,
+                                                    ],
+                                                    onPressed: (int index) =>
+                                                        settings.setLargeText(
+                                                            index == 1),
+                                                    fillColor:
+                                                        const Color(0xFF093582),
+                                                    selectedColor: Colors.white,
+                                                    color:
+                                                        const Color(0xFF11221D),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            8),
+                                                    constraints:
+                                                        const BoxConstraints(
+                                                      minHeight: 32,
+                                                      minWidth: 0,
+                                                    ),
+                                                    children: [
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 12),
+                                                        child: Text(
+                                                          settings.t(
+                                                              'text_size_standard'),
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 13,
+                                                            fontFamily: 'Rubik',
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      Padding(
+                                                        padding:
+                                                            const EdgeInsets
+                                                                .symmetric(
+                                                                horizontal: 12),
+                                                        child: Text(
+                                                          settings.t(
+                                                              'text_size_enlarged'),
+                                                          style:
+                                                              const TextStyle(
+                                                            fontSize: 13,
+                                                            fontFamily: 'Rubik',
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  _CascadingMenuRow(
+                                    icon: Icons.logout,
+                                    title: settings.t('log_out'),
+                                    subtitle: settings.t('sign_out'),
+                                    isDestructive: true,
+                                    onTap: _openLogoutModal,
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _CascadingMenuRow(
-                        icon: Icons.logout,
-                        title: settings.t('log_out'),
-                        subtitle: settings.t('sign_out'),
-                        isDestructive: true,
-                        onTap: _openLogoutModal,
-                      ),
-                    ],
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
                   ],
                 ),
               ),
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _SectionHeader(
-                      title: settings.t('available_benefits'),
-                      viewAllLabel: settings.t('view_all'),
-                      onViewAll: widget.onViewAllBenefits,
-                    ),
-                    const SizedBox(height: 14),
-                    FutureBuilder<List<Benefit>>(
-                      future: _benefitsFuture,
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 20),
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        }
+              // Rest of Screen Content — gentle fade + tiny settle so the
+              // home content eases in instead of hard-appearing.
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeOutCubic,
+                builder: (context, t, child) => Opacity(
+                  opacity: t,
+                  child: Transform.translate(
+                    offset: Offset(0, 8 * (1 - t)),
+                    child: child,
+                  ),
+                ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SectionHeader(
+                        title: settings.t('available_benefits'),
+                        viewAllLabel: settings.t('view_all'),
+                        onViewAll: widget.onViewAllBenefits,
+                      ),
+                      const SizedBox(height: 14),
+                      FutureBuilder<List<Benefit>>(
+                        future: _benefitsFuture,
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
 
-                        if (snapshot.hasError) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: Text(
-                              '${settings.t('error_loading_benefits')}: ${snapshot.error}',
-                              style: const TextStyle(
-                                  color: Colors.red, fontSize: 13),
-                            ),
-                          );
-                        }
-
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return Text(settings.t('no_benefits'));
-                        }
-
-                        final displayedBenefits =
-                            snapshot.data!.take(3).toList();
-
-                        return Column(
-                          children: [
-                            for (int i = 0;
-                                i < displayedBenefits.length;
-                                i++) ...[
-                              _BenefitCard(
-                                title: displayedBenefits[i].title,
-                                dateAndLocation:
-                                    displayedBenefits[i].dateAndLocation,
-                                icon: displayedBenefits[i].iconData,
-                                onTap: () =>
-                                    widget.onOpenBenefit(displayedBenefits[i]),
+                          if (snapshot.hasError) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Text(
+                                '${settings.t('error_loading_benefits')}: ${snapshot.error}',
+                                style: const TextStyle(
+                                    color: Colors.red, fontSize: 13),
                               ),
-                              if (i < displayedBenefits.length - 1)
-                                const SizedBox(height: 12),
+                            );
+                          }
+
+                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                            return Text(settings.t('no_benefits'));
+                          }
+
+                          final displayedBenefits =
+                              snapshot.data!.take(3).toList();
+
+                          return Column(
+                            children: [
+                              for (int i = 0;
+                                  i < displayedBenefits.length;
+                                  i++) ...[
+                                _BenefitCard(
+                                  title: displayedBenefits[i].title,
+                                  dateAndLocation:
+                                      displayedBenefits[i].dateAndLocation,
+                                  icon: displayedBenefits[i].iconData,
+                                  onTap: () => widget
+                                      .onOpenBenefit(displayedBenefits[i]),
+                                ),
+                                if (i < displayedBenefits.length - 1)
+                                  const SizedBox(height: 12),
+                              ],
                             ],
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 28),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _ActionTile(
-                            title: settings.t('voice_assistant'),
-                            subtitle: settings.t('voice_assistant_sub'),
-                            icon: Icons.mic,
-                            bgColor: const Color(0xFFD2ECFF),
-                            accentColor: const Color(0xFF0284C7),
-                            textColor: const Color(0xFF093582),
-                            onTap: widget.onOpenVoiceAssistant,
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 28),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ActionTile(
+                              title: settings.t('voice_assistant'),
+                              subtitle: settings.t('voice_assistant_sub'),
+                              icon: Icons.mic,
+                              bgColor: const Color(0xFFD2ECFF),
+                              accentColor: const Color(0xFF0284C7),
+                              textColor: const Color(0xFF093582),
+                              onTap: widget.onOpenVoiceAssistant,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: _ActionTile(
-                            title: settings.t('my_benefits'),
-                            subtitle: settings.t('my_benefits_sub'),
-                            icon: Icons.card_membership,
-                            bgColor: const Color(0xFFFFE7D2),
-                            accentColor: const Color(0xFFD35400),
-                            textColor: const Color(0xFFD35400),
-                            onTap: widget.onOpenBenefits,
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: _ActionTile(
+                              title: settings.t('my_benefits'),
+                              subtitle: settings.t('my_benefits_sub'),
+                              icon: Icons.card_membership,
+                              bgColor: const Color(0xFFFFE7D2),
+                              accentColor: const Color(0xFFD35400),
+                              textColor: const Color(0xFFD35400),
+                              onTap: widget.onOpenBenefits,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

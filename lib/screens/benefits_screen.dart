@@ -156,9 +156,18 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
               final key = _itemKeys.putIfAbsent(benefit.id, () => GlobalKey());
               return Container(
                 key: key,
-                child: BenefitCard(
-                  benefit: benefit,
-                  highlighted: benefit.id == _highlightedId,
+                // Gentle staggered fade as the list appears (later items
+                // fade in slightly later — calm, never bouncy).
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: Duration(milliseconds: 250 + index * 60),
+                  curve: Curves.easeOut,
+                  builder: (context, t, child) =>
+                      Opacity(opacity: t, child: child),
+                  child: BenefitCard(
+                    benefit: benefit,
+                    highlighted: benefit.id == _highlightedId,
+                  ),
                 ),
               );
             },

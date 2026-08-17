@@ -46,7 +46,7 @@ class AppSettings extends ChangeNotifier {
   /// enough that fixed layouts don't break.
   static const double largeTextScale = 1.2;
 
-  AppLanguage _language = AppLanguage.bisaya;
+  AppLanguage _language = AppLanguage.english;
   Map<String, String> _translations = {};
   bool _ready = false;
 

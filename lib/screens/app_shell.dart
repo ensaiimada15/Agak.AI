@@ -205,9 +205,20 @@ class _AppShellState extends State<AppShell> {
             _goTo(0);
           }
         },
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: pages,
+        child: TweenAnimationBuilder<double>(
+          // Calm crossfade on tab change (IndexedStack keeps all tabs
+          // alive so their state is preserved; the fade just eases the
+          // switch instead of hard-cutting).
+          key: ValueKey(_selectedIndex),
+          tween: Tween(begin: 0.35, end: 1),
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+          builder: (context, value, child) =>
+              Opacity(opacity: value, child: child),
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: pages,
+          ),
         ),
       ),
       bottomNavigationBar: _selectedIndex == 1
