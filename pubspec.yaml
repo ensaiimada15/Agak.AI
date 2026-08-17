@@ -11,7 +11,6 @@ dependencies:
     sdk: flutter
   google_fonts: ^6.2.1
   cupertino_icons: ^1.0.8
-  speech_to_text: ^7.4.0
   flutter_tts: ^4.2.5
   supabase_flutter: ^2.8.0
   flutter_dotenv: ^5.2.1
@@ -20,6 +19,7 @@ dependencies:
   just_audio: ^0.10.6
   path_provider: ^2.1.6
   audio_session: ^0.2.4
+  record: ^7.1.1
 
 dev_dependencies:
   flutter_test:

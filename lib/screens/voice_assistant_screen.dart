@@ -3,13 +3,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:speech_to_text/speech_recognition_error.dart';
-import 'package:speech_to_text/speech_recognition_result.dart';
-import 'package:speech_to_text/speech_to_text.dart';
 import '../models/profile_service.dart';
 import '../services/agakai_api.dart';
 import '../services/app_config.dart';
 import '../services/live_tts_player.dart';
+import '../services/voice_recorder.dart';
 import '../theme/app_colors.dart';
 import '../widgets/screen_header.dart';
 
@@ -43,39 +41,15 @@ class VoiceAssistantScreen extends StatefulWidget {
 class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   _VoiceState _state = _VoiceState.idle;
 
-  // ---- speech to text ----
-  final SpeechToText _speech = SpeechToText();
-  bool _speechReady = false;
+  // ---- microphone (server-side STT) ----
+  /// Pure audio capture. Transcription happens on the server (ElevenLabs
+  /// STT via the chat edge function), so no on-device recognizer can cut
+  /// off on silence — the user speaks as long as they like, then taps.
+  final VoiceRecorder _recorder = VoiceRecorder();
+  StreamSubscription<double>? _ampSub;
 
-  /// Raw mic input level from the recognizer (roughly -2..10 dB on most
-  /// platforms). Drives the mic button's enlarge/shrink so it visibly
-  /// reacts while the user is talking.
+  /// Raw mic level in dB (~ -60 quiet … -5 loud). Drives the mic pulse.
   double _soundLevel = 0;
-
-  Timer? _settleTimer;
-
-  // Continuous listening: committed sentence segments only. Partial STT
-  // results are deliberately NOT shown or stored — live transcription on
-  // Android/OEM recognizers is unreliable (frozen first-word, garbled
-  // updates). We wait for final results; the LLM remains the only stream.
-  final List<String> _segments = [];
-  int _silentFinals = 0;
-  bool _stopRequested = false;
-  Timer? _relistenTimer;
-
-  SpeechListenOptions get _listenOptions => SpeechListenOptions(
-        listenFor: const Duration(minutes: 2),
-        // pauseFor maps to EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS
-        // on Android, but many devices ignore it and finalize after ~2-3s
-        // of silence anyway. That's fine: `_scheduleRelisten` seamlessly
-        // restarts the recognizer, so the mic stays open until the user taps.
-        pauseFor: const Duration(minutes: 1),
-        // Better long-form behavior on iOS (sentences, not commands).
-        listenMode: ListenMode.dictation,
-      );
-
-  String get _fullTranscript =>
-      _segments.where((s) => s.trim().isNotEmpty).join(' ');
 
   // ---- streaming chat ----
   late final AgakApi _api = AgakApi(
@@ -101,68 +75,14 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   @override
   void initState() {
     super.initState();
-    _initSpeech();
     // Warm the profile cache so the first ask has no hidden network delay
     // before the chat stream opens.
     unawaited(ProfileService.loadProfileOrNull());
   }
 
-  Future<void> _initSpeech() async {
-    final ready = await _speech.initialize(
-      onError: _onSpeechError,
-      onStatus: (status) => debugPrint('STT status: $status'),
-      finalTimeout: const Duration(seconds: 3),
-    );
-    if (mounted) setState(() => _speechReady = ready);
-  }
-
   // ------------------------------------------------------------ speech ----
 
-  void _onSpeechError(SpeechRecognitionError error) {
-    debugPrint('STT error: ${error.errorMsg} (permanent=${error.permanent})');
-    // Android fires lots of "benign" permanent errors on pauses/noise.
-    // If we caught words and the user wasn't stopping, just keep the
-    // session alive by restarting the recognizer — never wipe or bail.
-    if (!mounted) return;
-
-    // We already captured words: the error is just the engine ending the
-    // session (noise/silence/stop). NEVER lose what we heard — ask now.
-    final question = _fullTranscript.trim();
-    if (question.isNotEmpty) {
-      _settleTimer?.cancel();
-      _relistenTimer?.cancel();
-      if (_state == _VoiceState.listening || _state == _VoiceState.processing) {
-        _ask(question);
-      }
-      return;
-    }
-
-    if (_stopRequested) {
-      // The user tapped stop; the FINAL result (real, or the plugin's
-      // fabricated one at ~3s after stop) may still be on its way with the
-      // words. Give it a grace window before concluding we heard nothing —
-      // never flash "didn't catch" while the transcript is about to land.
-      _settleTimer?.cancel();
-      _settleTimer =
-          Timer(const Duration(milliseconds: 3500), _finalizeSession);
-      return;
-    }
-    if (_state == _VoiceState.listening || _state == _VoiceState.processing) {
-      setState(() => _state = _VoiceState.idle);
-      _showNotCaught();
-    }
-  }
-
   void _showNotCaught() {
-    debugPrint('SHOW NOT CAUGHT (state=$_state stop=$_stopRequested '
-        'transcript=$_fullTranscript)');
-    // Only ever surface this while the mic session is still wrapping up
-    // (listening, or the brief processing pane). If the answer pane is
-    // already showing, a stale timer/error must not spam a contradictory
-    // "didn't catch" snackbar.
-    if (_state != _VoiceState.listening && _state != _VoiceState.processing) {
-      return;
-    }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('I didn\'t catch that. Please try again.'),
@@ -171,7 +91,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     );
   }
 
-  void _showSttUnavailable() {
+  void _showMicUnavailable() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Voice isn\'t available on this device right now. '
@@ -181,181 +101,55 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     );
   }
 
+  /// Tap the mic: start pure audio capture. NO on-device recognizer runs,
+  /// so nothing can cut off on silence — the user speaks as long as they
+  /// want and taps again when done.
   Future<void> _startListening() async {
-    if (!_speechReady) {
-      _showSttUnavailable();
+    final ok = await _recorder.start();
+    if (!ok) {
+      if (mounted) _showMicUnavailable();
       return;
     }
-    _relistenTimer?.cancel();
-    _settleTimer?.cancel();
-    _stopRequested = false;
-    _segments.clear();
-    _silentFinals = 0;
+    _ampSub?.cancel();
+    _ampSub = _recorder.amplitude.listen(_onAmplitude);
     _soundLevel = 0;
-    setState(() {
-      _state = _VoiceState.listening;
-    });
-    await _beginListen();
+    if (!mounted) return;
+    setState(() => _state = _VoiceState.listening);
   }
 
-  /// Safe wrapper around `_speech.listen` — never lets a platform error
-  /// leave the UI stuck on "Listening…" with a dead mic.
-  Future<void> _beginListen() async {
-    try {
-      await _speech.listen(
-        onResult: _onRecognitionResult,
-        onSoundLevelChange: _onSoundLevelChange,
-        listenOptions: _listenOptions,
-      );
-    } catch (e) {
-      debugPrint('STT listen failed: $e');
-      if (!mounted || _state != _VoiceState.listening) return;
-      setState(() => _state = _VoiceState.idle);
-      _showNotCaught();
-    }
-  }
-
-  /// Live mic input level → drives the mic button animation.
-  void _onSoundLevelChange(double level) {
+  /// Live mic level (dB) → drives the mic button animation.
+  void _onAmplitude(double db) {
     if (!mounted || _state != _VoiceState.listening) return;
-    _soundLevel = level;
+    _soundLevel = db;
     setState(() {});
   }
 
-  /// Best partial text seen in the CURRENT utterance. Finals on many
-  /// devices arrive EMPTY after a pause (the words only ever appeared as
-  /// partials) — this fallback keeps those words from being lost.
-  String _lastPartial = '';
-
-  void _onRecognitionResult(SpeechRecognitionResult result) {
+  /// Tap the mic again: stop recording, send the clip to the edge function
+  /// for server-side STT (ElevenLabs), then stream the answer.
+  Future<void> _stopListening() async {
+    if (!mounted || _state != _VoiceState.listening) return;
+    _ampSub?.cancel();
+    _ampSub = null;
+    // INSTANT feedback: switch to the "reading your question" pane while
+    // the recording is finalized and transcribed on the server.
+    setState(() => _state = _VoiceState.processing);
+    final bytes = await _recorder.stop();
     if (!mounted) return;
-
-    if (!result.finalResult) {
-      // Partials are not shown live (user preference), but remember the
-      // best text so an empty final after a pause can't eat the words.
-      final words = result.recognizedWords.trim();
-      if (words.isNotEmpty) _lastPartial = words;
-      return;
-    }
-
-    final words = result.recognizedWords.trim();
-    // Prefer the final text; fall back to the last partial if the final
-    // came back empty (common on silence detection).
-    final finale = words.isNotEmpty ? words : _lastPartial.trim();
-    _lastPartial = '';
-    debugPrint('STT final (${finale.length} chars): '
-        '${finale.length > 60 ? finale.substring(0, 60) : finale}');
-
-    if (finale.isNotEmpty) {
-      final full = _fullTranscript;
-      if (finale != full &&
-          (full.isEmpty ||
-              !finale.startsWith(full) ||
-              finale.length > full.length)) {
-        if (full.isNotEmpty && finale.startsWith(full)) {
-          // Device resent the accumulated text: append only the new tail.
-          _segments.add(finale.substring(full.length).trim());
-        } else if (_segments.isEmpty || _segments.last != finale) {
-          _segments.add(finale);
-        }
-        _silentFinals = 0;
-      }
-    } else {
-      _silentFinals++;
-    }
-
-    if (_stopRequested) {
-      // User tapped the mic: wrap up NOW and ask. (Even if an engine error
-      // raced in first, whatever we caught is still in [_segments].)
-      _settleTimer?.cancel();
-      _relistenTimer?.cancel();
-      final question = _fullTranscript.trim();
-      if (question.isNotEmpty) {
-        _ask(question);
-      } else {
-        _finalizeSession(); // nothing heard → gentle "didn't catch"
-      }
-      return;
-    }
-
-    if (_segments.isEmpty && _silentFinals >= 5) {
-      // Nothing but silence for several engine finals: give up gently.
-      _finalizeSession();
-      return;
-    }
-    // Many Androids ignore the silence extra and finalize after ~2-3s
-    // of pause. That must NOT end the session: seamlessly restart the
-    // recognizer and keep accumulating the user's words.
-    _scheduleRelisten();
-  }
-
-  /// Restarts the recognizer after the engine finalizes on its own, so the
-  /// mic effectively stays open until the user taps it. The committed
-  /// segments keep the full transcript across restarts.
-  void _scheduleRelisten() {
-    _relistenTimer?.cancel();
-    // Restart the recognizer fast after a silence-final so words spoken
-    // right after a pause are not missed. 300ms is long enough for the
-    // engine to release the mic, short enough to feel seamless.
-    _relistenTimer = Timer(const Duration(milliseconds: 300), () async {
-      if (!mounted || _state != _VoiceState.listening || _stopRequested) return;
-      if (_speech.isListening) return;
-      await _beginListen();
-    });
-  }
-
-  /// Settles the listening session: asks AgakAI with the captured question.
-  void _finalizeSession() {
-    _settleTimer?.cancel();
-    _relistenTimer?.cancel();
-    if (!mounted ||
-        (_state != _VoiceState.listening && _state != _VoiceState.processing)) {
-      return;
-    }
-    final question = _fullTranscript.trim();
-    if (question.isEmpty) {
+    if (bytes == null || bytes.isEmpty) {
       setState(() => _state = _VoiceState.idle);
       _showNotCaught();
       return;
     }
-    _ask(question);
-  }
-
-  Future<void> _stopListening() async {
-    _stopRequested = true;
-    _relistenTimer?.cancel();
-    _settleTimer?.cancel();
-
-    // INSTANT feedback: switch to the "reading your question" pane right
-    // away so the user knows their query was heard, instead of a silent
-    // wait while the engine finalizes.
-    if (mounted && _state == _VoiceState.listening) {
-      setState(() => _state = _VoiceState.processing);
-    }
-
-    try {
-      if (_speech.isListening) {
-        await _speech.stop(); // fires a final result → settle → ask
-      }
-    } catch (e) {
-      debugPrint('STT stop failed: $e');
-    }
-    // The final result (real, or the plugin's fabricated one at its
-    // ~3s finalTimeout) is still on its way. Fall back only if NOTHING
-    // arrives — never finalize early or the UI blips back to "Try asking"
-    // before the question lands.
-    _settleTimer = Timer(const Duration(milliseconds: 3500), _finalizeSession);
+    await _askAudio(bytes);
   }
 
   // ------------------------------------------------------------ chat ------
 
-  /// Starts a streaming chat for [question] and renders the answer live.
+  /// Starts a streaming chat for a typed [question] and renders the answer
+  /// live.
   void _ask(String question) {
     final q = question.trim();
     if (q.isEmpty) return;
-    // Cancel any pending speech-session timers: we're moving to answering.
-    _settleTimer?.cancel();
-    _relistenTimer?.cancel();
     // Barge-in: cut off any speech from a previous session before moving on.
     unawaited(_tts.stop());
     _audioBytes.clear();
@@ -368,10 +162,17 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
       _chatErrorMessage = '';
     });
     _textController.clear();
-    unawaited(_runChat(q));
+    unawaited(_runChat(text: q));
   }
 
-  Future<void> _runChat(String question) async {
+  /// Sends a recorded mic clip for server-side STT + chat. The screen is
+  /// already on the "Reading what you said…" pane; the `transcript` event
+  /// (the STT result) moves it to the answer view.
+  Future<void> _askAudio(Uint8List bytes) async {
+    await _runChat(audioBytes: bytes);
+  }
+
+  Future<void> _runChat({String? text, Uint8List? audioBytes}) async {
     final gen = ++_chatGen;
 
     // Personalize: send the logged-in senior's profile so AgakAI greets
@@ -389,11 +190,21 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     if (!mounted || gen != _chatGen) return;
 
     try {
-      await for (final event in _api.chatStream(text: question, user: user)) {
+      await for (final event in _api.chatStream(
+        text: text,
+        audioBytes: audioBytes,
+        audioFormat: 'm4a',
+        user: user,
+      )) {
         if (!mounted || gen != _chatGen) return; // superseded by a newer ask
         switch (event) {
           case AgakTranscript():
-            setState(() => _question = event.question);
+            // Server-side STT result — this is the question. If we were on
+            // the processing pane (audio path), move to the answer view.
+            setState(() {
+              _state = _VoiceState.answering;
+              _question = event.question;
+            });
           case AgakDelta():
             setState(() => _answer += event.text);
             if (_answer.length % 6 == 0) _scrollToBottom();
@@ -410,6 +221,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
             await _tts.play(_audioBytes.takeBytes());
           case AgakError():
             setState(() {
+              // Ensure the error box is visible even from the processing
+              // pane (e.g. STT failed on the server).
+              _state = _VoiceState.answering;
               _chatError = true;
               _chatErrorMessage = event.message;
             });
@@ -420,6 +234,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
       if (!mounted || gen != _chatGen) return;
       await _tts.stop();
       setState(() {
+        _state = _VoiceState.answering;
         _chatError = true;
         _chatErrorMessage = 'Network error: $e';
       });
@@ -537,17 +352,15 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
 
   Future<void> _reset() async {
     _chatGen++; // discard any in-flight stream
-    _settleTimer?.cancel();
-    _relistenTimer?.cancel();
-    if (_speech.isListening) await _speech.cancel();
+    await _recorder.cancel(); // no-op if not recording
+    _ampSub?.cancel();
+    _ampSub = null;
     await _tts.stop();
     _audioBytes.clear();
     _soundLevel = 0;
     if (!mounted) return;
     setState(() {
       _state = _VoiceState.idle;
-      _segments.clear();
-      _stopRequested = false;
       _question = '';
       _answer = '';
       _chatDone = false;
@@ -556,11 +369,11 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   }
 
   @override
+  @override
   void dispose() {
     _chatGen++;
-    _settleTimer?.cancel();
-    _relistenTimer?.cancel();
-    _speech.cancel();
+    _ampSub?.cancel();
+    unawaited(_recorder.dispose());
     unawaited(_tts.dispose());
     _textController.dispose();
     _scrollController.dispose();
@@ -757,6 +570,9 @@ class _ListeningBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Just the calm pulse here — the "Listening… tap the mic when you're
+    // done" instruction already lives in the bottom dock, so repeating it
+    // in the middle would be redundant.
     return const Expanded(
       child: Center(
         child: Padding(
@@ -765,23 +581,6 @@ class _ListeningBody extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               _ListeningPulse(),
-              SizedBox(height: 20),
-              Text(
-                'I\'m listening — go ahead and speak.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.ink,
-                  height: 1.4,
-                ),
-              ),
-              SizedBox(height: 6),
-              Text(
-                'Tap the mic again when you\'re finished.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: AppColors.slateText),
-              ),
             ],
           ),
         ),
@@ -1261,9 +1060,9 @@ class _MicButtonState extends State<_MicButton> with TickerProviderStateMixin {
   );
 
   double get _normalizedLevel {
-    // Typical recognizer levels run roughly -2 (silence) to 10 (loud).
-    // Normalize to 0..1 and guard against out-of-range platform values.
-    final v = (widget.soundLevel + 2) / 12;
+    // Mic levels from the recorder run roughly -60 dB (quiet) to -5 dB
+    // (loud). Normalize to 0..1 and guard against out-of-range values.
+    final v = (widget.soundLevel + 50) / 50;
     return v.clamp(0.0, 1.0);
   }
 
