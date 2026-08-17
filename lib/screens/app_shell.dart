@@ -19,6 +19,10 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _selectedIndex = 0;
 
+  /// Benefit the user tapped on the home tab — the Benefits tab scrolls to
+  /// it and highlights it briefly.
+  String? _highlightBenefitId;
+
   /// Listens for new benefit rows and pops a "we think you might like this"
   /// notification (relevant benefits only, computed from the senior's
   /// address).
@@ -41,6 +45,14 @@ class _AppShellState extends State<AppShell> {
 
   void _goTo(int index) {
     setState(() => _selectedIndex = index);
+  }
+
+  /// Open the Benefits tab and jump to the tapped benefit.
+  void _openBenefit(Benefit benefit) {
+    setState(() {
+      _highlightBenefitId = benefit.id;
+      _selectedIndex = 2; // Benefits tab
+    });
   }
 
   void _showNewBenefitNotification(Benefit benefit, bool relevant) {
@@ -169,6 +181,7 @@ class _AppShellState extends State<AppShell> {
             _goTo(2), // Updated to point to Benefits (Index 2)
         onOpenVoiceAssistant: () =>
             _goTo(1), // Updated to point to Voice (Index 1)
+        onOpenBenefit: _openBenefit,
       ),
       // Index 1: Voice / Tingog (Center Tab)
       VoiceAssistantScreen(
@@ -178,6 +191,7 @@ class _AppShellState extends State<AppShell> {
       // Index 2: Benefits
       BenefitsScreen(
         onBack: () => _goTo(0),
+        highlightBenefitId: _highlightBenefitId,
       ),
     ];
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/benefit.dart';
 import '../models/benefit_service.dart';
@@ -6,7 +8,11 @@ import '../models/profile_service.dart';
 class BenefitsScreen extends StatefulWidget {
   final VoidCallback? onBack;
 
-  const BenefitsScreen({super.key, this.onBack});
+  /// Benefit id to scroll to + briefly highlight (set when the user taps a
+  /// benefit card on the home tab).
+  final String? highlightBenefitId;
+
+  const BenefitsScreen({super.key, this.onBack, this.highlightBenefitId});
 
   @override
   State<BenefitsScreen> createState() => _BenefitsScreenState();
@@ -14,6 +20,10 @@ class BenefitsScreen extends StatefulWidget {
 
 class _BenefitsScreenState extends State<BenefitsScreen> {
   late Future<List<Benefit>> _benefitsFuture;
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _itemKeys = {};
+  String? _highlightedId;
+  Timer? _highlightTimer;
 
   @override
   void initState() {
@@ -22,6 +32,34 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
     _benefitsFuture = ProfileService.loadProfile()
         .then((p) => BenefitService.loadRelevantBenefits(p.address))
         .catchError((_) => BenefitService.loadBenefits());
+  }
+
+  @override
+  void dispose() {
+    _highlightTimer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// Scrolls the tapped benefit into view and flashes its border.
+  void _scrollToHighlight(List<Benefit> benefits) {
+    final id = widget.highlightBenefitId;
+    if (id == null || _highlightedId != null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final key = _itemKeys[id];
+      if (key?.currentContext == null) return;
+      setState(() => _highlightedId = id);
+      Scrollable.ensureVisible(
+        key!.currentContext!,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+        alignment: 0.1,
+      );
+      _highlightTimer?.cancel();
+      _highlightTimer = Timer(const Duration(milliseconds: 2500), () {
+        if (mounted) setState(() => _highlightedId = null);
+      });
+    });
   }
 
   @override
@@ -106,12 +144,23 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
             return const Center(child: Text('No benefits found.'));
           }
 
+          _scrollToHighlight(benefits);
+
           return ListView.separated(
+            controller: _scrollController,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             itemCount: benefits.length,
             separatorBuilder: (_, __) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
-              return BenefitCard(benefit: benefits[index]);
+              final benefit = benefits[index];
+              final key = _itemKeys.putIfAbsent(benefit.id, () => GlobalKey());
+              return Container(
+                key: key,
+                child: BenefitCard(
+                  benefit: benefit,
+                  highlighted: benefit.id == _highlightedId,
+                ),
+              );
             },
           );
         },
@@ -123,7 +172,11 @@ class _BenefitsScreenState extends State<BenefitsScreen> {
 class BenefitCard extends StatelessWidget {
   final Benefit benefit;
 
-  const BenefitCard({super.key, required this.benefit});
+  /// True while this card is being pointed out after a home-tab tap.
+  final bool highlighted;
+
+  const BenefitCard(
+      {super.key, required this.benefit, this.highlighted = false});
 
   /// benefit.dart stores date + location as a single combined
   /// `dateAndLocation` string (e.g. "Jan 15, 2026 • City Hall").
@@ -142,19 +195,22 @@ class BenefitCard extends StatelessWidget {
     final date = parts.isNotEmpty ? parts[0] : '';
     final location = parts.length > 1 ? parts[1] : '';
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFFE2E8F0),
-          width: 1.5,
+          color:
+              highlighted ? const Color(0xFF3B82F6) : const Color(0xFFE2E8F0),
+          width: highlighted ? 2.5 : 1.5,
         ),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0A0F172A),
-            blurRadius: 12,
-            offset: Offset(0, 4),
+            color:
+                highlighted ? const Color(0x333B82F6) : const Color(0x0A0F172A),
+            blurRadius: highlighted ? 12 : 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),

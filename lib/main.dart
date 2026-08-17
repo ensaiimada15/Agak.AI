@@ -17,7 +17,8 @@ class AppSettingsScope extends InheritedWidget {
   final AppSettings settings;
 
   static AppSettings of(BuildContext context) {
-    final result = context.dependOnInheritedWidgetOfExactType<AppSettingsScope>();
+    final result =
+        context.dependOnInheritedWidgetOfExactType<AppSettingsScope>();
     assert(result != null, 'No AppSettingsScope found in context');
     return result!.settings;
   }
@@ -58,7 +59,14 @@ class AgakAIApp extends StatelessWidget {
             title: 'AgakAI',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light,
-            builder: (context, child) => ResponsiveFrame(child: child!),
+            builder: (context, child) => MediaQuery(
+              // Apply the settings text scale (standard / enlarged) to the
+              // whole app on top of the device's own font scale.
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(settings.textScale),
+              ),
+              child: ResponsiveFrame(child: child!),
+            ),
             home: const LoginScreen(),
           ),
         );

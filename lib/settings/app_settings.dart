@@ -41,11 +41,21 @@ extension AppLanguageMeta on AppLanguage {
 /// Plain ChangeNotifier — no external state management package required.
 /// (Dark mode was intentionally dropped: the app is light-only for seniors.)
 class AppSettings extends ChangeNotifier {
+  /// Enlarged text multiplier used when the senior picks "Enlarged".
+  /// Deliberately modest (1.2x) — big enough to help aging eyes, small
+  /// enough that fixed layouts don't break.
+  static const double largeTextScale = 1.2;
+
   AppLanguage _language = AppLanguage.bisaya;
   Map<String, String> _translations = {};
   bool _ready = false;
 
+  /// UI text scale: 1.0 = standard, [largeTextScale] = enlarged.
+  double _textScale = 1.0;
+
   AppLanguage get language => _language;
+  double get textScale => _textScale;
+  bool get largeText => _textScale > 1.0;
 
   /// True once the first translation file has finished loading. Gate your
   /// app's first frame on this (see main_example.dart) so you never flash
@@ -59,7 +69,16 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setLanguage(AppLanguage lang) async {
+  /// Standard (false) or Enlarged (true) text app-wide.
+  void setLargeText(bool large) {
+    final target = large ? largeTextScale : 1.0;
+    if (_textScale == target) return;
+    _textScale = target;
+    notifyListeners();
+    _persist();
+  }
+
+  Future<void> setLanguage(AppLanguage lang) async {
     if (_language == lang) return;
     await _loadTranslations(lang);
     _language = lang;

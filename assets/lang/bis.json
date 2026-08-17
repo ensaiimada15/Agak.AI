@@ -27,5 +27,8 @@
   "failed_to_load_profile": "Napakyas pag-load sa profile",
   "error_loading_benefits": "Sayop sa pag-load sa benepisyo",
   "no_benefits": "Walay anaa nga benepisyo karon.",
-  "are_you_sure_logout": "Sigurado ka nga gusto ka mo-log out sa imong account?"
+  "are_you_sure_logout": "Sigurado ka nga gusto ka mo-log out sa imong account?",
+  "text_size": "Gidak-on sa Letra",
+  "text_size_standard": "Standard",
+  "text_size_enlarged": "Dako"
 }

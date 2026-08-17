@@ -27,5 +27,8 @@
   "failed_to_load_profile": "Hindi ma-load ang profile",
   "error_loading_benefits": "Error sa pag-load ng benepisyo",
   "no_benefits": "Walang available na benepisyo ngayon.",
-  "are_you_sure_logout": "Sigurado ka bang gusto mong mag-log out sa iyong account?"
+  "are_you_sure_logout": "Sigurado ka bang gusto mong mag-log out sa iyong account?",
+  "text_size": "Laki ng Teksto",
+  "text_size_standard": "Standard",
+  "text_size_enlarged": "Malaki"
 }

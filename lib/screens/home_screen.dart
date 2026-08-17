@@ -14,12 +14,16 @@ class HomeScreen extends StatefulWidget {
     required this.onOpenVoiceAssistant,
     required this.onOpenBenefits,
     required this.onViewAllBenefits,
+    required this.onOpenBenefit,
     this.onMenuTap,
   });
 
   final VoidCallback onOpenVoiceAssistant;
   final VoidCallback onOpenBenefits;
   final VoidCallback onViewAllBenefits;
+
+  /// Tap a benefit card → jump to that benefit on the Benefits tab.
+  final void Function(Benefit benefit) onOpenBenefit;
   final VoidCallback? onMenuTap;
 
   @override
@@ -320,36 +324,127 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             SizedBox(
                               height: 32,
-                              child: ToggleButtons(
-                                isSelected: AppLanguage.values
-                                    .map((lang) => settings.language == lang)
-                                    .toList(),
-                                onPressed: (int index) {
-                                  settings
-                                      .setLanguage(AppLanguage.values[index]);
-                                },
-                                fillColor: const Color(0xFF093582),
-                                selectedColor: Colors.white,
-                                color: const Color(0xFF11221D),
-                                borderRadius: BorderRadius.zero,
-                                constraints: const BoxConstraints(
-                                  minHeight: 32,
-                                  minWidth: 0,
+                              // Flexible + FittedBox: the three language
+                              // buttons scale down to fit even when the
+                              // enlarged text setting is on (no overflow).
+                              child: Flexible(
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: ToggleButtons(
+                                    isSelected: AppLanguage.values
+                                        .map(
+                                            (lang) => settings.language == lang)
+                                        .toList(),
+                                    onPressed: (int index) {
+                                      settings.setLanguage(
+                                          AppLanguage.values[index]);
+                                    },
+                                    fillColor: const Color(0xFF093582),
+                                    selectedColor: Colors.white,
+                                    color: const Color(0xFF11221D),
+                                    borderRadius: BorderRadius.zero,
+                                    constraints: const BoxConstraints(
+                                      minHeight: 32,
+                                      minWidth: 0,
+                                    ),
+                                    children: AppLanguage.values.map((lang) {
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10),
+                                        child: Text(
+                                          lang.nativeLabel,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontFamily: 'Rubik',
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
                                 ),
-                                children: AppLanguage.values.map((lang) {
-                                  return Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10),
-                                    child: Text(
-                                      lang.nativeLabel,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontFamily: 'Rubik',
-                                        fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 10, horizontal: 16),
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom:
+                                BorderSide(color: Color(0xFFF1F5F9), width: 1),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.text_fields,
+                                color: Color(0xFF093582), size: 22),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    settings.t('text_size'),
+                                    style: const TextStyle(
+                                      color: Color(0xFF11221D),
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: 'Rubik',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  SizedBox(
+                                    height: 32,
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: ToggleButtons(
+                                        isSelected: [
+                                          !settings.largeText,
+                                          settings.largeText,
+                                        ],
+                                        onPressed: (int index) =>
+                                            settings.setLargeText(index == 1),
+                                        fillColor: const Color(0xFF093582),
+                                        selectedColor: Colors.white,
+                                        color: const Color(0xFF11221D),
+                                        borderRadius: BorderRadius.circular(8),
+                                        constraints: const BoxConstraints(
+                                          minHeight: 32,
+                                          minWidth: 0,
+                                        ),
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12),
+                                            child: Text(
+                                              settings.t('text_size_standard'),
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontFamily: 'Rubik',
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 12),
+                                            child: Text(
+                                              settings.t('text_size_enlarged'),
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontFamily: 'Rubik',
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                  );
-                                }).toList(),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -417,6 +512,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 dateAndLocation:
                                     displayedBenefits[i].dateAndLocation,
                                 icon: displayedBenefits[i].iconData,
+                                onTap: () =>
+                                    widget.onOpenBenefit(displayedBenefits[i]),
                               ),
                               if (i < displayedBenefits.length - 1)
                                 const SizedBox(height: 12),
@@ -729,71 +826,77 @@ class _BenefitCard extends StatelessWidget {
     required this.title,
     required this.dateAndLocation,
     required this.icon,
+    required this.onTap,
   });
 
   final String title;
   final String dateAndLocation;
   final IconData icon;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFCBD5E1), width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x080F172A),
-            blurRadius: 3,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              color: Color(0xFF4FB152),
-              shape: BoxShape.circle,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFCBD5E1), width: 2),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x080F172A),
+              blurRadius: 3,
+              offset: Offset(0, 2),
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'Rubik',
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  dateAndLocation,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF475569),
-                    fontSize: 13,
-                    fontFamily: 'Rubik',
-                  ),
-                ),
-              ],
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                color: Color(0xFF4FB152),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 24),
             ),
-          ),
-          const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
-        ],
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Rubik',
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    dateAndLocation,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF475569),
+                      fontSize: 13,
+                      fontFamily: 'Rubik',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF94A3B8)),
+          ],
+        ),
       ),
     );
   }
