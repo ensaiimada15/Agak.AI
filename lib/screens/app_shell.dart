@@ -163,12 +163,17 @@ class _AppShellState extends State<AppShell> {
     final List<Widget> pages = [
       // Index 0: Home / Balay
       HomeScreen(
-        onOpenBenefits: () => _goTo(2),       // Updated to point to Benefits (Index 2)
-        onViewAllBenefits: () => _goTo(2),     // Updated to point to Benefits (Index 2)
-        onOpenVoiceAssistant: () => _goTo(1),  // Updated to point to Voice (Index 1)
+        onOpenBenefits: () =>
+            _goTo(2), // Updated to point to Benefits (Index 2)
+        onViewAllBenefits: () =>
+            _goTo(2), // Updated to point to Benefits (Index 2)
+        onOpenVoiceAssistant: () =>
+            _goTo(1), // Updated to point to Voice (Index 1)
       ),
       // Index 1: Voice / Tingog (Center Tab)
-      const VoiceAssistantScreen(),
+      VoiceAssistantScreen(
+        onBack: () => _goTo(0),
+      ),
 
       // Index 2: Benefits
       BenefitsScreen(
@@ -177,16 +182,26 @@ class _AppShellState extends State<AppShell> {
     ];
 
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: pages,
+      // Android system back: from any tab go Home; only exit the app from
+      // the Home tab itself.
+      body: PopScope(
+        canPop: _selectedIndex == 0,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && _selectedIndex != 0) {
+            _goTo(0);
+          }
+        },
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: pages,
+        ),
       ),
       bottomNavigationBar: _selectedIndex == 1
           ? null
           : AppBottomNav(
-        currentIndex: _selectedIndex,
-        onTap: _goTo,
-      ),
+              currentIndex: _selectedIndex,
+              onTap: _goTo,
+            ),
     );
   }
 }

@@ -13,7 +13,7 @@ import '../services/live_tts_player.dart';
 import '../theme/app_colors.dart';
 import '../widgets/screen_header.dart';
 
-enum _VoiceState { idle, listening, answering }
+enum _VoiceState { idle, listening, processing, answering }
 
 class _SuggestedQuestion {
   const _SuggestedQuestion(this.title, this.subtitle);
@@ -27,12 +27,14 @@ const _suggestedQuestions = [
   _SuggestedQuestion('Senior Discount', 'unsaon pag-gamit sa Senior C...'),
 ];
 
-/// How long to hold the mic screen after the final transcript lands before
-/// moving on to the answer view.
-const _settleDelay = Duration(milliseconds: 500);
-
 class VoiceAssistantScreen extends StatefulWidget {
-  const VoiceAssistantScreen({super.key});
+  const VoiceAssistantScreen({super.key, this.onBack});
+
+  /// Optional back handler (e.g. switch to the Home tab). When null, the
+  /// header arrow falls back to [Navigator.maybePop] — which does nothing
+  /// inside an IndexedStack, so shells that host this screen in a tab
+  /// should pass an explicit handler.
+  final VoidCallback? onBack;
 
   @override
   State<VoiceAssistantScreen> createState() => _VoiceAssistantScreenState();
@@ -45,6 +47,11 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   final SpeechToText _speech = SpeechToText();
   bool _speechReady = false;
 
+  /// Raw mic input level from the recognizer (roughly -2..10 dB on most
+  /// platforms). Drives the mic button's enlarge/shrink so it visibly
+  /// reacts while the user is talking.
+  double _soundLevel = 0;
+
   Timer? _settleTimer;
 
   // Continuous listening: committed sentence segments only. Partial STT
@@ -56,21 +63,16 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   bool _stopRequested = false;
   Timer? _relistenTimer;
 
-  /// Raw mic input level from the recognizer (roughly -2..10 dB on most
-  /// platforms). Drives the mic button's enlarge/shrink animation so the
-  /// button visibly reacts while the user is talking.
-  double _soundLevel = 0;
-
   SpeechListenOptions get _listenOptions => SpeechListenOptions(
-    listenFor: const Duration(minutes: 2),
-    // pauseFor maps to EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS
-    // on Android, but many devices ignore it and finalize after ~2-3s
-    // of silence anyway. That's fine: `_scheduleRelisten` seamlessly
-    // restarts the recognizer, so the mic stays open until the user taps.
-    pauseFor: const Duration(minutes: 1),
-    // Better long-form behavior on iOS (sentences, not commands).
-    listenMode: ListenMode.dictation,
-  );
+        listenFor: const Duration(minutes: 2),
+        // pauseFor maps to EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS
+        // on Android, but many devices ignore it and finalize after ~2-3s
+        // of silence anyway. That's fine: `_scheduleRelisten` seamlessly
+        // restarts the recognizer, so the mic stays open until the user taps.
+        pauseFor: const Duration(minutes: 1),
+        // Better long-form behavior on iOS (sentences, not commands).
+        listenMode: ListenMode.dictation,
+      );
 
   String get _fullTranscript =>
       _segments.where((s) => s.trim().isNotEmpty).join(' ');
@@ -100,11 +102,15 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void initState() {
     super.initState();
     _initSpeech();
+    // Warm the profile cache so the first ask has no hidden network delay
+    // before the chat stream opens.
+    unawaited(ProfileService.loadProfileOrNull());
   }
 
   Future<void> _initSpeech() async {
     final ready = await _speech.initialize(
       onError: _onSpeechError,
+      onStatus: (status) => debugPrint('STT status: $status'),
       finalTimeout: const Duration(seconds: 3),
     );
     if (mounted) setState(() => _speechReady = ready);
@@ -113,21 +119,50 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   // ------------------------------------------------------------ speech ----
 
   void _onSpeechError(SpeechRecognitionError error) {
+    debugPrint('STT error: ${error.errorMsg} (permanent=${error.permanent})');
     // Android fires lots of "benign" permanent errors on pauses/noise.
     // If we caught words and the user wasn't stopping, just keep the
     // session alive by restarting the recognizer — never wipe or bail.
     if (!mounted) return;
-    if (!_stopRequested && _fullTranscript.isNotEmpty) {
-      _scheduleRelisten();
+
+    // We already captured words: the error is just the engine ending the
+    // session (noise/silence/stop). NEVER lose what we heard — ask now.
+    final question = _fullTranscript.trim();
+    if (question.isNotEmpty) {
+      _settleTimer?.cancel();
+      _relistenTimer?.cancel();
+      if (_state == _VoiceState.listening || _state == _VoiceState.processing) {
+        _ask(question);
+      }
       return;
     }
-    if (_state == _VoiceState.listening) {
+
+    if (_stopRequested) {
+      // The user tapped stop; the FINAL result (real, or the plugin's
+      // fabricated one at ~3s after stop) may still be on its way with the
+      // words. Give it a grace window before concluding we heard nothing —
+      // never flash "didn't catch" while the transcript is about to land.
+      _settleTimer?.cancel();
+      _settleTimer =
+          Timer(const Duration(milliseconds: 3500), _finalizeSession);
+      return;
+    }
+    if (_state == _VoiceState.listening || _state == _VoiceState.processing) {
       setState(() => _state = _VoiceState.idle);
       _showNotCaught();
     }
   }
 
   void _showNotCaught() {
+    debugPrint('SHOW NOT CAUGHT (state=$_state stop=$_stopRequested '
+        'transcript=$_fullTranscript)');
+    // Only ever surface this while the mic session is still wrapping up
+    // (listening, or the brief processing pane). If the answer pane is
+    // already showing, a stale timer/error must not spam a contradictory
+    // "didn't catch" snackbar.
+    if (_state != _VoiceState.listening && _state != _VoiceState.processing) {
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('I didn\'t catch that. Please try again.'),
@@ -156,52 +191,102 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _stopRequested = false;
     _segments.clear();
     _silentFinals = 0;
+    _soundLevel = 0;
     setState(() {
       _state = _VoiceState.listening;
-      _soundLevel = 0;
     });
-    await _speech.listen(
-      onResult: _onRecognitionResult,
-      onSoundLevelChange: _onSoundLevelChange,
-      listenOptions: _listenOptions,
-    );
+    await _beginListen();
   }
 
+  /// Safe wrapper around `_speech.listen` — never lets a platform error
+  /// leave the UI stuck on "Listening…" with a dead mic.
+  Future<void> _beginListen() async {
+    try {
+      await _speech.listen(
+        onResult: _onRecognitionResult,
+        onSoundLevelChange: _onSoundLevelChange,
+        listenOptions: _listenOptions,
+      );
+    } catch (e) {
+      debugPrint('STT listen failed: $e');
+      if (!mounted || _state != _VoiceState.listening) return;
+      setState(() => _state = _VoiceState.idle);
+      _showNotCaught();
+    }
+  }
+
+  /// Live mic input level → drives the mic button animation.
   void _onSoundLevelChange(double level) {
     if (!mounted || _state != _VoiceState.listening) return;
-    setState(() => _soundLevel = level);
+    _soundLevel = level;
+    setState(() {});
   }
+
+  /// Best partial text seen in the CURRENT utterance. Finals on many
+  /// devices arrive EMPTY after a pause (the words only ever appeared as
+  /// partials) — this fallback keeps those words from being lost.
+  String _lastPartial = '';
 
   void _onRecognitionResult(SpeechRecognitionResult result) {
     if (!mounted) return;
 
-    // Only FINAL results matter. Partial results are deliberately ignored:
-    // live transcription on Android/OEM recognizers is unreliable (stuck
-    // first word, blank flashes), and the user asked for the transcript to
-    // appear only when the request finishes.
-    if (!result.finalResult) return;
+    if (!result.finalResult) {
+      // Partials are not shown live (user preference), but remember the
+      // best text so an empty final after a pause can't eat the words.
+      final words = result.recognizedWords.trim();
+      if (words.isNotEmpty) _lastPartial = words;
+      return;
+    }
 
     final words = result.recognizedWords.trim();
-    if (words.isNotEmpty && (_segments.isEmpty || _segments.last != words)) {
-      _segments.add(words);
-      _silentFinals = 0;
-    } else if (words.isEmpty) {
+    // Prefer the final text; fall back to the last partial if the final
+    // came back empty (common on silence detection).
+    final finale = words.isNotEmpty ? words : _lastPartial.trim();
+    _lastPartial = '';
+    debugPrint('STT final (${finale.length} chars): '
+        '${finale.length > 60 ? finale.substring(0, 60) : finale}');
+
+    if (finale.isNotEmpty) {
+      final full = _fullTranscript;
+      if (finale != full &&
+          (full.isEmpty ||
+              !finale.startsWith(full) ||
+              finale.length > full.length)) {
+        if (full.isNotEmpty && finale.startsWith(full)) {
+          // Device resent the accumulated text: append only the new tail.
+          _segments.add(finale.substring(full.length).trim());
+        } else if (_segments.isEmpty || _segments.last != finale) {
+          _segments.add(finale);
+        }
+        _silentFinals = 0;
+      }
+    } else {
       _silentFinals++;
     }
 
     if (_stopRequested) {
-      // User tapped the mic: settle into the question and ask AgakAI.
+      // User tapped the mic: wrap up NOW and ask. (Even if an engine error
+      // raced in first, whatever we caught is still in [_segments].)
       _settleTimer?.cancel();
-      _settleTimer = Timer(_settleDelay, _finalizeSession);
-    } else if (_segments.isEmpty && _silentFinals >= 5) {
+      _relistenTimer?.cancel();
+      final question = _fullTranscript.trim();
+      if (question.isNotEmpty) {
+        _ask(question);
+      } else {
+        _finalizeSession(); // nothing heard → gentle "didn't catch"
+      }
+      return;
+    }
+
+    if (_segments.isEmpty && _silentFinals >= 5) {
       // Nothing but silence for several engine finals: give up gently.
       _finalizeSession();
-    } else {
-      // Many Androids ignore the silence extra and finalize after ~2-3s
-      // of pause. That must NOT end the session: seamlessly restart the
-      // recognizer and keep accumulating the user's words.
-      _scheduleRelisten();
+      return;
     }
+    // Many Androids ignore the silence extra and finalize after ~2-3s
+    // of pause. That must NOT end the session: seamlessly restart the
+    // recognizer and keep accumulating the user's words.
+    _scheduleRelisten();
   }
 
   /// Restarts the recognizer after the engine finalizes on its own, so the
@@ -209,16 +294,13 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   /// segments keep the full transcript across restarts.
   void _scheduleRelisten() {
     _relistenTimer?.cancel();
-    // Keep the gap between engine restarts short so pauses don't feel like
-    // the mic "stopped".
-    _relistenTimer = Timer(const Duration(milliseconds: 500), () async {
+    // Restart the recognizer fast after a silence-final so words spoken
+    // right after a pause are not missed. 300ms is long enough for the
+    // engine to release the mic, short enough to feel seamless.
+    _relistenTimer = Timer(const Duration(milliseconds: 300), () async {
       if (!mounted || _state != _VoiceState.listening || _stopRequested) return;
       if (_speech.isListening) return;
-      await _speech.listen(
-        onResult: _onRecognitionResult,
-        onSoundLevelChange: _onSoundLevelChange,
-        listenOptions: _listenOptions,
-      );
+      await _beginListen();
     });
   }
 
@@ -226,8 +308,10 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void _finalizeSession() {
     _settleTimer?.cancel();
     _relistenTimer?.cancel();
-    if (!mounted || _state != _VoiceState.listening) return;
-    _soundLevel = 0;
+    if (!mounted ||
+        (_state != _VoiceState.listening && _state != _VoiceState.processing)) {
+      return;
+    }
     final question = _fullTranscript.trim();
     if (question.isEmpty) {
       setState(() => _state = _VoiceState.idle);
@@ -241,15 +325,26 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _stopRequested = true;
     _relistenTimer?.cancel();
     _settleTimer?.cancel();
-    if (_speech.isListening) {
-      await _speech.stop(); // fires a final result → settle → ask
-      // Belt-and-suspenders: if no final event arrives, don't hang.
-      _settleTimer =
-          Timer(const Duration(milliseconds: 2500), _finalizeSession);
-    } else {
-      // Engine already ended on its own (silence final): settle now.
-      _settleTimer = Timer(_settleDelay, _finalizeSession);
+
+    // INSTANT feedback: switch to the "reading your question" pane right
+    // away so the user knows their query was heard, instead of a silent
+    // wait while the engine finalizes.
+    if (mounted && _state == _VoiceState.listening) {
+      setState(() => _state = _VoiceState.processing);
     }
+
+    try {
+      if (_speech.isListening) {
+        await _speech.stop(); // fires a final result → settle → ask
+      }
+    } catch (e) {
+      debugPrint('STT stop failed: $e');
+    }
+    // The final result (real, or the plugin's fabricated one at its
+    // ~3s finalTimeout) is still on its way. Fall back only if NOTHING
+    // arrives — never finalize early or the UI blips back to "Try asking"
+    // before the question lands.
+    _settleTimer = Timer(const Duration(milliseconds: 3500), _finalizeSession);
   }
 
   // ------------------------------------------------------------ chat ------
@@ -258,6 +353,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void _ask(String question) {
     final q = question.trim();
     if (q.isEmpty) return;
+    // Cancel any pending speech-session timers: we're moving to answering.
+    _settleTimer?.cancel();
+    _relistenTimer?.cancel();
     // Barge-in: cut off any speech from a previous session before moving on.
     unawaited(_tts.stop());
     _audioBytes.clear();
@@ -282,11 +380,12 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     final user = profile == null
         ? null
         : <String, Object?>{
-      'name': profile.name,
-      'age': profile.age,
-      'gender': profile.gender,
-      'address': profile.address,
-    };
+            'id': profile.id,
+            'name': profile.name,
+            'age': profile.age,
+            'gender': profile.gender,
+            'address': profile.address,
+          };
     if (!mounted || gen != _chatGen) return;
 
     try {
@@ -299,9 +398,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
             setState(() => _answer += event.text);
             if (_answer.length % 6 == 0) _scrollToBottom();
           case AgakAudio():
-          // Accumulate the mp3 chunks; the full answer is played as one
-          // file when `done` arrives (whole-answer playback — nothing
-          // streams, so nothing can skip).
+            // Accumulate the mp3 chunks; the full answer is played as one
+            // file when `done` arrives (whole-answer playback — nothing
+            // streams, so nothing can skip).
             _audioBytes.add(event.chunk);
           case AgakDone():
             setState(() {
@@ -338,6 +437,104 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     });
   }
 
+  /// `?` button: reveals the senior's rolling support notes (`user_notes`),
+  /// maintained by the LLM after every exchange.
+  void _openNotes() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.62 + bottomInset,
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.psychology_outlined,
+                      color: AppColors.navy, size: 24),
+                  SizedBox(width: 10),
+                  Text('Support notes',
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'How AgakAI is getting to know Lola/Lolo — updated after '
+                'each conversation.',
+                style: TextStyle(fontSize: 13, color: AppColors.slateText),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: FutureBuilder<String?>(
+                  future: ProfileService.loadUserNotes(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final notes = snapshot.data;
+                    if (notes == null) {
+                      return const Center(
+                        child: Text('Could not load notes.',
+                            style: TextStyle(color: AppColors.slateText)),
+                      );
+                    }
+                    if (notes.trim().isEmpty) {
+                      return const Center(
+                        child: Text('No notes yet — start a conversation.',
+                            style: TextStyle(color: AppColors.slateText)),
+                      );
+                    }
+                    return SingleChildScrollView(
+                      child: MarkdownBody(
+                        data: notes,
+                        selectable: true,
+                        styleSheet:
+                            MarkdownStyleSheet.fromTheme(Theme.of(context))
+                                .copyWith(
+                          p: const TextStyle(
+                              fontSize: 15,
+                              color: AppColors.slateText,
+                              height: 1.55),
+                          strong: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink),
+                          listBullet: const TextStyle(
+                              fontSize: 15, color: AppColors.slateText),
+                          h1: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navy),
+                          h2: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navy),
+                          h3: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.navy),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _reset() async {
     _chatGen++; // discard any in-flight stream
     _settleTimer?.cancel();
@@ -345,12 +542,12 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     if (_speech.isListening) await _speech.cancel();
     await _tts.stop();
     _audioBytes.clear();
+    _soundLevel = 0;
     if (!mounted) return;
     setState(() {
       _state = _VoiceState.idle;
       _segments.clear();
       _stopRequested = false;
-      _soundLevel = 0;
       _question = '';
       _answer = '';
       _chatDone = false;
@@ -383,10 +580,11 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
             ScreenHeader(
               title: 'Ask Anything',
               subtitle: 'Ako ang imong OSCA assistant',
-              trailing: _state == _VoiceState.idle
-                  ? _CircleButton(
-                  icon: Icons.help_outline_rounded, onTap: () {})
-                  : null,
+              onBack: widget.onBack,
+              trailing: _CircleButton(
+                icon: Icons.help_outline_rounded,
+                onTap: _openNotes,
+              ),
             ),
             Expanded(
               // Gentle crossfade between idle / listening / answering so
@@ -408,27 +606,43 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
                 ),
                 child: switch (_state) {
                   _VoiceState.idle => _IdleBody(
-                    onMicTap: _startListening,
-                    controller: _textController,
-                    onSubmit: _ask,
-                    onSuggestedTap: _ask,
-                  ),
-                  _VoiceState.listening => _ListeningBody(
-                    onMicTap: _stopListening,
-                    soundLevel: _soundLevel,
-                  ),
+                      controller: _textController,
+                      onSubmit: _ask,
+                      onSuggestedTap: _ask,
+                    ),
+                  _VoiceState.listening => const _ListeningBody(),
+                  _VoiceState.processing => const _ProcessingBody(),
                   _VoiceState.answering => _AnsweringBody(
-                    onMicTap: _reset,
-                    question: _question,
-                    answer: _answer,
-                    done: _chatDone,
-                    error: _chatError,
-                    errorMessage: _chatErrorMessage,
-                    onRetry: () => _ask(_question),
-                    scrollController: _scrollController,
-                  ),
+                      question: _question,
+                      answer: _answer,
+                      done: _chatDone,
+                      error: _chatError,
+                      errorMessage: _chatErrorMessage,
+                      onRetry: () => _ask(_question),
+                      scrollController: _scrollController,
+                    ),
                 },
               ),
+            ),
+            // Mic dock pinned at the BOTTOM, always visible: the button
+            // pulses with the live voice level while listening, and the
+            // label explains the current action.
+            _MicDock(
+              onMicTap: switch (_state) {
+                _VoiceState.idle => _startListening,
+                _VoiceState.listening => _stopListening,
+                _VoiceState.processing => () {},
+                _VoiceState.answering => _reset,
+              },
+              listening: _state == _VoiceState.listening,
+              label: switch (_state) {
+                _VoiceState.idle => 'Tap to Speak',
+                _VoiceState.listening =>
+                  'Listening… tap the mic when you\'re done',
+                _VoiceState.processing => 'Reading what you said…',
+                _VoiceState.answering => 'Tap to Ask Again',
+              },
+              soundLevel: _soundLevel,
             ),
           ],
         ),
@@ -437,10 +651,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   }
 }
 
-/// Docks the mic button + status label at the BOTTOM of the screen, on
-/// every voice-assistant state, so the primary action always sits in the
-/// same easy-to-reach spot (large thumb zone) instead of moving around.
-/// A soft top divider separates it from scrolling content above.
+/// Fixed bottom bar holding the mic button + status label, used by every
+/// voice-assistant state. The mic pulses with the live voice level while
+/// listening (see [_MicButton.soundLevel]).
 class _MicDock extends StatelessWidget {
   const _MicDock({
     required this.onMicTap,
@@ -452,8 +665,6 @@ class _MicDock extends StatelessWidget {
   final VoidCallback onMicTap;
   final bool listening;
   final String label;
-  /// Live mic input level (only meaningful while [listening]); makes the
-  /// button visibly enlarge and shrink as the user speaks.
   final double soundLevel;
 
   @override
@@ -475,7 +686,7 @@ class _MicDock extends StatelessWidget {
                 listening: listening,
                 soundLevel: soundLevel,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               // Soft fade when the status label changes (silent, easy to
               // read — no sudden pop for aging eyes).
               AnimatedSwitcher(
@@ -485,9 +696,8 @@ class _MicDock extends StatelessWidget {
                   key: ValueKey(label),
                   textAlign: TextAlign.center,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18,
-                    color: AppColors.ink,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
                   ),
                 ),
               ),
@@ -501,13 +711,11 @@ class _MicDock extends StatelessWidget {
 
 class _IdleBody extends StatelessWidget {
   const _IdleBody({
-    required this.onMicTap,
     required this.controller,
     required this.onSubmit,
     required this.onSuggestedTap,
   });
 
-  final VoidCallback onMicTap;
   final TextEditingController controller;
   final ValueChanged<String> onSubmit;
   final ValueChanged<String> onSuggestedTap;
@@ -518,70 +726,154 @@ class _IdleBody extends StatelessWidget {
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Try asking...',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
-                        color: AppColors.ink)),
-                const SizedBox(height: 14),
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                const SizedBox(height: 12),
                 for (final q in _suggestedQuestions) ...[
                   _QuestionButton(
                       question: q, onTap: () => onSuggestedTap(q.title)),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                 ],
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 _AskBar(controller: controller, onSubmit: onSubmit),
               ],
             ),
           ),
         ),
-        _MicDock(onMicTap: onMicTap, listening: false, label: 'Tap to Speak'),
       ],
     );
   }
 }
 
-/// Listening state: a single calm, centered message up top; the mic
-/// itself (docked at the bottom) is the one focal animation, enlarging
-/// and shrinking as the user's voice comes through.
+/// Centered hint shown while the mic is live (the mic itself lives in the
+/// bottom dock and pulses with the voice level).
 class _ListeningBody extends StatelessWidget {
-  const _ListeningBody({required this.onMicTap, required this.soundLevel});
-
-  final VoidCallback onMicTap;
-  final double soundLevel;
+  const _ListeningBody();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const Expanded(
-          child: Center(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(32, 0, 32, 24),
-              child: Text(
+    return const Expanded(
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(32, 0, 32, 40),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ListeningPulse(),
+              SizedBox(height: 20),
+              Text(
                 'I\'m listening — go ahead and speak.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: AppColors.ink,
                   height: 1.4,
                 ),
               ),
+              SizedBox(height: 6),
+              Text(
+                'Tap the mic again when you\'re finished.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15, color: AppColors.slateText),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown the instant the user taps the mic to stop: confirms the query
+/// was heard while the engine finalizes the transcript.
+class _ProcessingBody extends StatelessWidget {
+  const _ProcessingBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(32, 0, 32, 40),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ListeningPulse(),
+                  SizedBox(height: 20),
+                  Text(
+                    'Reading what you said…',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.ink,
+                      height: 1.4,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'One moment, Lola/Lolo.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 15, color: AppColors.slateText),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-        _MicDock(
-          onMicTap: onMicTap,
-          listening: true,
-          label: 'Tap the mic when you\'re done',
-          soundLevel: soundLevel,
-        ),
       ],
+    );
+  }
+}
+
+/// Calm pulsing dot + soft rings while the mic is live.
+class _ListeningPulse extends StatelessWidget {
+  const _ListeningPulse();
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 1100),
+      tween: Tween(begin: 0, end: 1),
+      builder: (context, t, child) {
+        final wide = 56 + 22 * t;
+        return SizedBox(
+          width: wide,
+          height: wide,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 56 + 22 * (1 - t),
+                height: 56 + 22 * (1 - t),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.paleBlueBg,
+                ),
+              ),
+              Opacity(
+                opacity: 0.45,
+                child: Container(
+                  width: 70,
+                  height: 70,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.skyBlueBg2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -590,7 +882,6 @@ class _ListeningBody extends StatelessWidget {
 /// arrive). Auto-scrolls while the answer grows.
 class _AnsweringBody extends StatelessWidget {
   const _AnsweringBody({
-    required this.onMicTap,
     required this.question,
     required this.answer,
     required this.done,
@@ -600,7 +891,6 @@ class _AnsweringBody extends StatelessWidget {
     required this.scrollController,
   });
 
-  final VoidCallback onMicTap;
   final String question;
   final String answer;
   final bool done;
@@ -612,11 +902,11 @@ class _AnsweringBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final markdownStyle =
-    MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+        MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
       p: const TextStyle(fontSize: 18, color: AppColors.slateText, height: 1.6),
       listBullet: const TextStyle(fontSize: 18, color: AppColors.slateText),
       strong:
-      const TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink),
+          const TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink),
       blockquote: const TextStyle(
           fontSize: 17,
           color: AppColors.slateText,
@@ -629,86 +919,80 @@ class _AnsweringBody extends StatelessWidget {
           fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.navy),
     );
 
-    return Column(
-      children: [
-        Expanded(
-          child: SingleChildScrollView(
-            controller: scrollController,
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-            // Calm entrance: the card fades in with a barely-there scale.
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOutCubic,
-              builder: (context, t, child) => Opacity(
-                opacity: t,
-                child: Transform.scale(scale: 0.98 + 0.02 * t, child: child),
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(23),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFE5E7EB)),
-                  boxShadow: const [
-                    BoxShadow(
-                        color: Color(0x12000000),
-                        blurRadius: 14,
-                        offset: Offset(0, 14)),
+    return Expanded(
+      child: SingleChildScrollView(
+        controller: scrollController,
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+        // Calm entrance: the card fades in with a barely-there scale.
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOutCubic,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.scale(scale: 0.98 + 0.02 * t, child: child),
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(23),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE5E7EB)),
+              boxShadow: const [
+                BoxShadow(
+                    color: Color(0x12000000),
+                    blurRadius: 14,
+                    offset: Offset(0, 14)),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ---- the question ----
+                const Row(
+                  children: [
+                    Icon(Icons.mic_rounded, color: AppColors.navy, size: 20),
+                    SizedBox(width: 8),
+                    Text('Your question',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.navy,
+                            letterSpacing: 0.3)),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ---- the question ----
-                    const Row(
-                      children: [
-                        Icon(Icons.mic_rounded,
-                            color: AppColors.navy, size: 20),
-                        SizedBox(width: 8),
-                        Text('Your question',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.navy,
-                                letterSpacing: 0.3)),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      question,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontSize: 18,
-                          color: AppColors.slateText,
-                          height: 1.6),
-                    ),
-                    const Divider(height: 32),
+                const SizedBox(height: 12),
+                Text(
+                  question,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 18, color: AppColors.slateText, height: 1.6),
+                ),
+                const Divider(height: 32),
 
-                    // ---- the streaming answer ----
-                    if (error)
-                      TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0, end: 1),
-                        duration: const Duration(milliseconds: 200),
-                        builder: (context, t, child) =>
-                            Opacity(opacity: t, child: child),
-                        child:
-                        _ErrorBox(message: errorMessage, onRetry: onRetry),
-                      )
-                    else if (answer.isEmpty && !done)
-                      const _ThinkingIndicator()
-                    else ...[
-                        MarkdownBody(
-                          data: answer,
-                          styleSheet: markdownStyle,
-                          selectable: true,
-                        ),
-                        const SizedBox(height: 12),
-                        // The working indicator fades out on completion and is
-                        // replaced by a quiet confirmation.
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
-                          child: done
-                              ? const Row(
+                // ---- the streaming answer ----
+                if (error)
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: 1),
+                    duration: const Duration(milliseconds: 200),
+                    builder: (context, t, child) =>
+                        Opacity(opacity: t, child: child),
+                    child: _ErrorBox(message: errorMessage, onRetry: onRetry),
+                  )
+                else if (answer.isEmpty && !done)
+                  const _ThinkingIndicator()
+                else ...[
+                  MarkdownBody(
+                    data: answer,
+                    styleSheet: markdownStyle,
+                    selectable: true,
+                  ),
+                  const SizedBox(height: 12),
+                  // The working indicator fades out on completion and is
+                  // replaced by a quiet confirmation.
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: done
+                        ? const Row(
                             key: ValueKey('done'),
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -722,7 +1006,7 @@ class _AnsweringBody extends StatelessWidget {
                                       color: AppColors.claimGreen)),
                             ],
                           )
-                              : const Row(
+                        : const Row(
                             key: ValueKey('answering'),
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -735,16 +1019,13 @@ class _AnsweringBody extends StatelessWidget {
                                       color: AppColors.midBlue)),
                             ],
                           ),
-                        ),
-                      ],
-                  ],
-                ),
-              ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
-        _MicDock(onMicTap: onMicTap, listening: false, label: 'Tap to Ask Again'),
-      ],
+      ),
     );
   }
 }
@@ -851,8 +1132,7 @@ class _QuestionButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 64),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -873,17 +1153,15 @@ class _QuestionButton extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                           fontSize: 18,
                           color: AppColors.ink)),
-                  const SizedBox(height: 2),
                   Text(question.subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          fontSize: 15, color: AppColors.slateText)),
+                          fontSize: 14, color: AppColors.slateText)),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.slateText, size: 26),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.slateText),
           ],
         ),
       ),
@@ -945,9 +1223,8 @@ class _AskBar extends StatelessWidget {
   }
 }
 
-/// Mic button. While [listening] the outer ring pulses blue AND the whole
-/// button smoothly enlarges/shrinks with [soundLevel] — a direct, easy to
-/// read visual cue ("it grows when I talk") rather than an abstract meter.
+/// Mic button; while [listening] the outer ring pulses blue so the user
+/// can see the microphone is live.
 class _MicButton extends StatefulWidget {
   const _MicButton({
     required this.onTap,
@@ -999,17 +1276,22 @@ class _MicButtonState extends State<_MicButton> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(covariant _MicButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.listening != oldWidget.listening) {
-      if (widget.listening) {
-        _controller.repeat(reverse: true);
-        _breathe.stop();
-        _breathe.value = 0;
-      } else {
-        _controller.stop();
-        _controller.value = 0;
-        _voice.animateTo(0, curve: Curves.easeOut);
-        _breathe.repeat(reverse: true);
-      }
+    // Voice level updates arrive continuously WHILE listening — handle
+    // them BEFORE the listening-state early return, otherwise the mic
+    // never reacts to the user's voice.
+    if (widget.listening && widget.soundLevel != oldWidget.soundLevel) {
+      _voice.animateTo(_normalizedLevel, curve: Curves.easeOut);
+    }
+    if (widget.listening == oldWidget.listening) return;
+    if (widget.listening) {
+      _controller.repeat(reverse: true);
+      _breathe.stop();
+      _breathe.value = 0;
+    } else {
+      _controller.stop();
+      _controller.value = 0;
+      _voice.animateTo(0, curve: Curves.easeOut);
+      _breathe.repeat(reverse: true);
     }
     if (widget.listening && widget.soundLevel != oldWidget.soundLevel) {
       _voice.animateTo(_normalizedLevel, curve: Curves.easeOut);
