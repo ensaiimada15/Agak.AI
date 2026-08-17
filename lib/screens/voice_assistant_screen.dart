@@ -100,6 +100,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   Future<void> _initSpeech() async {
     final ready = await _speech.initialize(
       onError: _onSpeechError,
+      onStatus: (status) => debugPrint('STT status: $status'),
       finalTimeout: const Duration(seconds: 3),
     );
     if (mounted) setState(() => _speechReady = ready);
@@ -108,12 +109,32 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   // ------------------------------------------------------------ speech ----
 
   void _onSpeechError(SpeechRecognitionError error) {
+    debugPrint('STT error: ${error.errorMsg} (permanent=${error.permanent})');
     // Android fires lots of "benign" permanent errors on pauses/noise.
     // If we caught words and the user wasn't stopping, just keep the
     // session alive by restarting the recognizer — never wipe or bail.
     if (!mounted) return;
-    if (!_stopRequested && _fullTranscript.isNotEmpty) {
-      _scheduleRelisten();
+
+    // We already captured words: the error is just the engine ending the
+    // session (noise/silence/stop). NEVER lose what we heard — ask now.
+    final question = _fullTranscript.trim();
+    if (question.isNotEmpty) {
+      _settleTimer?.cancel();
+      _relistenTimer?.cancel();
+      if (_state == _VoiceState.listening) {
+        _ask(question);
+      }
+      return;
+    }
+
+    if (_stopRequested) {
+      // The user tapped stop; the FINAL result (real, or the plugin's
+      // fabricated one at ~3s after stop) may still be on its way with the
+      // words. Give it a grace window before concluding we heard nothing —
+      // never flash "didn't catch" while the transcript is about to land.
+      _settleTimer?.cancel();
+      _settleTimer =
+          Timer(const Duration(milliseconds: 3500), _finalizeSession);
       return;
     }
     if (_state == _VoiceState.listening) {
@@ -123,6 +144,12 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   }
 
   void _showNotCaught() {
+    debugPrint('SHOW NOT CAUGHT (state=$_state stop=$_stopRequested '
+        'transcript=$_fullTranscript)');
+    // Only ever surface this while we're still on the listening screen.
+    // If the answer pane is already showing, a stale timer/error must not
+    // spam a contradictory "didn't catch" snackbar.
+    if (_state != _VoiceState.listening) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('I didn\'t catch that. Please try again.'),
@@ -154,10 +181,23 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     setState(() {
       _state = _VoiceState.listening;
     });
-    await _speech.listen(
-      onResult: _onRecognitionResult,
-      listenOptions: _listenOptions,
-    );
+    await _beginListen();
+  }
+
+  /// Safe wrapper around `_speech.listen` — never lets a platform error
+  /// leave the UI stuck on "Listening…" with a dead mic.
+  Future<void> _beginListen() async {
+    try {
+      await _speech.listen(
+        onResult: _onRecognitionResult,
+        listenOptions: _listenOptions,
+      );
+    } catch (e) {
+      debugPrint('STT listen failed: $e');
+      if (!mounted || _state != _VoiceState.listening) return;
+      setState(() => _state = _VoiceState.idle);
+      _showNotCaught();
+    }
   }
 
   void _onRecognitionResult(SpeechRecognitionResult result) {
@@ -170,6 +210,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     if (!result.finalResult) return;
 
     final words = result.recognizedWords.trim();
+    debugPrint('STT final (${words.length} chars): '
+        '${words.length > 60 ? words.substring(0, 60) : words}');
     if (words.isNotEmpty && (_segments.isEmpty || _segments.last != words)) {
       _segments.add(words);
       _silentFinals = 0;
@@ -178,18 +220,28 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     }
 
     if (_stopRequested) {
-      // User tapped the mic: settle into the question and ask AgakAI.
+      // User tapped the mic: wrap up NOW and ask. (Even if an engine error
+      // raced in first, whatever we caught is still in [_segments].)
       _settleTimer?.cancel();
-      _settleTimer = Timer(_settleDelay, _finalizeSession);
-    } else if (_segments.isEmpty && _silentFinals >= 5) {
+      _relistenTimer?.cancel();
+      final question = _fullTranscript.trim();
+      if (question.isNotEmpty) {
+        _ask(question);
+      } else {
+        _finalizeSession(); // nothing heard → gentle "didn't catch"
+      }
+      return;
+    }
+
+    if (_segments.isEmpty && _silentFinals >= 5) {
       // Nothing but silence for several engine finals: give up gently.
       _finalizeSession();
-    } else {
-      // Many Androids ignore the silence extra and finalize after ~2-3s
-      // of pause. That must NOT end the session: seamlessly restart the
-      // recognizer and keep accumulating the user's words.
-      _scheduleRelisten();
+      return;
     }
+    // Many Androids ignore the silence extra and finalize after ~2-3s
+    // of pause. That must NOT end the session: seamlessly restart the
+    // recognizer and keep accumulating the user's words.
+    _scheduleRelisten();
   }
 
   /// Restarts the recognizer after the engine finalizes on its own, so the
@@ -202,10 +254,7 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _relistenTimer = Timer(const Duration(milliseconds: 500), () async {
       if (!mounted || _state != _VoiceState.listening || _stopRequested) return;
       if (_speech.isListening) return;
-      await _speech.listen(
-        onResult: _onRecognitionResult,
-        listenOptions: _listenOptions,
-      );
+      await _beginListen();
     });
   }
 
@@ -227,8 +276,14 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
     _stopRequested = true;
     _relistenTimer?.cancel();
     _settleTimer?.cancel();
+    try {
+      if (_speech.isListening) {
+        await _speech.stop(); // fires a final result → settle → ask
+      }
+    } catch (e) {
+      debugPrint('STT stop failed: $e');
+    }
     if (_speech.isListening) {
-      await _speech.stop(); // fires a final result → settle → ask
       // Belt-and-suspenders: if no final event arrives, don't hang.
       _settleTimer =
           Timer(const Duration(milliseconds: 2500), _finalizeSession);
@@ -244,6 +299,9 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
   void _ask(String question) {
     final q = question.trim();
     if (q.isEmpty) return;
+    // Cancel any pending speech-session timers: we're moving to answering.
+    _settleTimer?.cancel();
+    _relistenTimer?.cancel();
     // Barge-in: cut off any speech from a previous session before moving on.
     unawaited(_tts.stop());
     _audioBytes.clear();

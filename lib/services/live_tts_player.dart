@@ -12,6 +12,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -42,12 +43,23 @@ class LiveTtsPlayer {
   }
 
   /// Abort playback (barge-in / error / new question). Safe to call
-  /// repeatedly and on a fresh player.
+  /// repeatedly and on a fresh player. Also RELEASES the Android audio
+  /// session so the speech recognizer can grab the mic afterwards —
+  /// otherwise a played answer can wedge the audio path (the recognizer
+  /// runs but hears nothing).
   Future<void> stop() async {
     try {
       await _player.stop();
     } catch (_) {
       // already stopped
+    }
+    try {
+      // Deactivate our audio session entirely: next STT starts clean.
+      // (setActive(false) is a no-op when already inactive.)
+      final session = await AudioSession.instance;
+      await session.setActive(false);
+    } catch (_) {
+      // audio session may not be configured yet — harmless
     }
   }
 
