@@ -9,7 +9,6 @@ import '../services/app_config.dart';
 class BenefitService {
   // TODO: replace with your project's values.
   // Found in Supabase dashboard: Project Settings > API.
-  static final String? _apiKey = AppConfig.supabaseAnonKey;
   static List<Benefit>? _cachedBenefits;
 
   /// Fetches all benefits.
@@ -25,8 +24,8 @@ class BenefitService {
       final response = await http.get(
         uri,
         headers: {
-          'apikey': AppConfig.supabaseAnonKey!,
-          'Authorization': 'Bearer ${AppConfig.supabaseAnonKey!}',
+          'apikey': AppConfig.supabasePublishableKey!,
+          'Authorization': 'Bearer ${AppConfig.supabasePublishableKey!}',
         },
       );
 

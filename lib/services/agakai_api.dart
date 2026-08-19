@@ -52,14 +52,14 @@ class AgakError extends AgakEvent {
 // ---------------------------------------------------------------- client ----
 
 class AgakApi {
-  AgakApi({required this.supabaseUrl, required this.anonKey});
+  AgakApi({required this.supabaseUrl, required this.publishableKey});
 
   final String supabaseUrl;
-  final String anonKey;
+  final String publishableKey;
 
   Map<String, String> get _headers => {
-        'apikey': anonKey,
-        'Authorization': 'Bearer $anonKey',
+        'publishableKey': publishableKey,
+        'Authorization': 'Bearer $publishableKey',
         'Content-Type': 'application/json',
       };
 
