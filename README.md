@@ -7,7 +7,7 @@ Team representing **Silliman University**.
 
 ![AgakAI demo — STT → LLM → TTS voice flow](docs/demo.gif)
 
-> 🎬 **Watch the demo with sound** — [▶️ demo video](docs/demo.mp4): a senior speaking, the live transcript appearing, and the assistant replying aloud in the same language (Bisaya/Tagalog/English) — no menus, answers play as they're generated.
+> 🎬 **Watch the demo with sound on YouTube**: [youtube.com/shorts/nofzBAcyMaU](https://youtube.com/shorts/nofzBAcyMaU) — a senior speaking, the live transcript appearing, and the assistant replying aloud in the same language (Bisaya/Tagalog/English).
 
 ---
 
