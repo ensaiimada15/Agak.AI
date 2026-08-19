@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'services/app_config.dart';
 import 'settings/app_settings.dart';
 import 'screens/login_screen.dart';
 import 'theme/app_theme.dart';
@@ -30,11 +30,11 @@ class AppSettingsScope extends InheritedWidget {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await dotenv.load(fileName: '.env');
+  await AppConfig.load();
 
   await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL']!,
-    publishableKey: dotenv.env['SUPABASE_KEY']
+    url: AppConfig.supabaseUrl!,
+    publishableKey: AppConfig.supabasePublishableKey!,
   );
 
   final appSettings = AppSettings();

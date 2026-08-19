@@ -33,13 +33,9 @@ flutter:
   assets:
     - .env
     - assets/lang/
-    - assets/data/
     - assets/images/logo.png
-    - assets/images/avatar.png
-    - assets/images/dashboard_hero.png
     - assets/images/icon.png
     - assets/images/splash_logo.png
-    - assets/data/benefits.json
 
 # App launcher icon (generated from assets/images/icon.png):
 #   dart run flutter_launcher_icons

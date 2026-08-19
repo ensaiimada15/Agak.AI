@@ -1,9 +1,4 @@
 // Shared helpers for the ElevenLabs API (STT + TTS).
-// Env vars:
-//   ELEVENLABS_API_KEY   required
-//   ELEVENLABS_VOICE_ID  required (the voice used for TTS)
-//   ELEVENLABS_STT_MODEL optional, defaults to scribe_v1
-//   ELEVENLABS_TTS_MODEL optional, defaults to eleven_flash_v2_5 (lowest latency)
 
 const BASE = "https://api.elevenlabs.io"
 

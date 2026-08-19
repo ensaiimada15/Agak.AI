@@ -7,8 +7,6 @@ import '../services/app_config.dart';
 /// using plain HTTP calls to Supabase's auto-generated REST API (PostgREST)
 /// instead of the supabase_flutter package.
 class BenefitService {
-  // TODO: replace with your project's values.
-  // Found in Supabase dashboard: Project Settings > API.
   static List<Benefit>? _cachedBenefits;
 
   /// Fetches all benefits.
@@ -58,9 +56,8 @@ class BenefitService {
     return relevant.isEmpty ? all : relevant;
   }
 
-  /// Is a single benefit relevant to the senior at [address]?
-  /// Used both by the benefits filter and by the realtime "you might like
-  /// this" notification for newly inserted benefits.
+  /// Is a single benefit relevant to the senior at [address]? Used by the
+  /// benefits filter to surface the most useful benefits for a senior.
   static bool isRelevantFor(Benefit benefit, String? address) {
     final tokens = _addressTokens(address ?? '');
     if (tokens.isEmpty) {

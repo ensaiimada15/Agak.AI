@@ -1,8 +1,5 @@
 // Shared helpers for the OpenRouter API (LLM only).
 // OpenRouter is OpenAI-compatible.
-// Env vars:
-//   OPENROUTER_API_KEY    required
-//   OPENROUTER_LLM_MODEL  optional, defaults to openai/gpt-4o-mini
 
 const BASE = "https://openrouter.ai/api/v1"
 

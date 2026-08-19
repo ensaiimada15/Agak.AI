@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { llm, llmStream } from "../_shared/openrouter.ts"
-import { stt, ttsStream, ttsFull, bytesToBase64 } from "../_shared/elevenlabs.ts"
+import { stt, ttsStream, bytesToBase64 } from "../_shared/elevenlabs.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,54 +17,37 @@ const corsHeaders = {
 const PERSONA_BUCKET = () => Deno.env.get("PERSONA_BUCKET") ?? "public"
 const PERSONA_PATH = () => Deno.env.get("PERSONA_FILE") ?? "persona.md"
 
-const FALLBACK_PERSONA = `You are AgakAI, a warm and patient voice assistant for senior citizens in the Philippines (Dumaguete City, Cebu, and nearby LGUs).
-You help them discover, understand, and claim their government benefits.
-
-A member profile is provided with each conversation (name, age, gender, address):
-- Use their first name ("Lola Luz" / "Lolo Pedro") when the profile gives a name.
-- Tailor examples and advice to their location; a benefit for another LGU is not helpful to them.
-- Respect their age: speak slowly and clearly, one idea at a time.
-
-How you speak: simply and kindly, in short sentences. Use "Lola" or "Lolo".
-If they ask in Cebuano/Bisaya, reply in Bisaya; if Tagalog, reply in Tagalog; if English, reply in English.
-Politely warn them if anything sounds like it could be a scam.
-
-Memory: use the recent conversation history to remember what they asked before and follow up naturally.
-Never invent history that isn't there.
-
-Using the benefit records below (each has title, description, simplified description, eligibility, LGU):
-- When a simplified description exists, explain with that version; otherwise use the regular description.
-- Mention the category when it helps.
-- Always tell them who is eligible and what they may need to bring (e.g. Senior Citizen ID).
-- Prefer benefits that apply to their LGU or are national; avoid recommending out-of-area ones.
-- Never invent benefits, amounts, or requirements that are not listed below.
-- If nothing answers their question, say you will check with the LGU office, and they may also visit the City Social Welfare and Development Office.
-
-Benefit records:
-{{BENEFITS}}`
-
 let personaCache: { text: string; at: number } | null = null
 const PERSONA_CACHE_MS = 60_000 // re-read from storage at most once a minute
 
 async function loadPersona(): Promise<string> {
   if (personaCache && Date.now() - personaCache.at < PERSONA_CACHE_MS) return personaCache.text
 
-  // 1) Supabase Storage (works in deployed edge functions)
+  const bucket = PERSONA_BUCKET()
+  const path = PERSONA_PATH()
+  const storageUrl = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/${bucket}/${path}`
+
+  // 1) Supabase Storage — the source of truth in deployed edge functions.
+  let storageError: string | null = null
   try {
-    const url = `${Deno.env.get("SUPABASE_URL")}/storage/v1/object/public/${PERSONA_BUCKET()}/${PERSONA_PATH()}`
-    const res = await fetch(url)
+    const res = await fetch(storageUrl)
     if (res.ok) {
       const text = (await res.text()).trim()
       if (text) {
         personaCache = { text, at: Date.now() }
         return text
       }
+      storageError = "file is empty"
+    } else {
+      storageError = `HTTP ${res.status} ${res.statusText}`
     }
   } catch (e) {
-    console.warn("persona fetch from storage failed:", e)
+    storageError = String((e as Error)?.message ?? e)
   }
+  console.error(`persona fetch from storage failed (${storageUrl}): ${storageError}`)
 
-  // 2) Local file (works with `supabase functions serve` during development)
+  // 2) Local file — dev only (`supabase functions serve`); not included in
+  // the deployed bundle, so this is just a convenience during development.
   try {
     const text = (await Deno.readTextFile(new URL("./persona.md", import.meta.url))).trim()
     if (text) {
@@ -75,8 +58,13 @@ async function loadPersona(): Promise<string> {
     /* not available in deployed bundle */
   }
 
-  // 3) Never break the demo
-  return FALLBACK_PERSONA
+  // 3) Fail loudly instead of silently running with a stale/wrong persona.
+  throw new Error(
+    `Cannot load the AgakAI persona. Storage fetch failed (${storageError}) and the local ` +
+      `persona.md is not bundled with the deployed function. Upload it to the "${bucket}" bucket at ` +
+      `path "${path}": supabase storage upload supabase/functions/chat/persona.md ` +
+      `--bucket-name ${bucket} --path ${path} --upsert`,
+  )
 }
 
 async function loadBenefitsContext(): Promise<string> {
@@ -287,54 +275,9 @@ serve(async (req) => {
   }
 
   try {
-    const { audio_data, audio_format, text, history, stream, user } = await req.json()
+    const { audio_data, audio_format, text, history, user } = await req.json()
 
-    // ---------------- LEGACY (non-streaming) MODE ----------------
-    // Default for backwards compatibility: one JSON blob, same shape as before.
-    if (!stream) {
-      const [persona, benefitsContext] = await Promise.all([loadPersona(), loadBenefitsContext()])
-
-      let question = typeof text === "string" ? text : ""
-      if (!question.trim() && audio_data) {
-        question = await stt(audio_data, audio_format ?? "m4a")
-      }
-      if (!question.trim()) throw new Error("No speech detected")
-
-      const userId = (user as any)?.id
-      const storedHistory =
-        typeof userId === "number" ? await loadHistory(userId) : []
-      const messages = [
-        { role: "system" as const, content: persona.replace("{{BENEFITS}}", benefitsContext) + memberContext(user) },
-        ...((history ?? []) as HistoryMsg[]),
-        ...storedHistory,
-        { role: "user" as const, content: question },
-      ]
-      const answer = await llm(messages)
-      const audio = await ttsFull(answer)
-
-      // Persist the exchange + revise the psychological notes (background).
-      if (typeof userId === "number") {
-        const fullHistory: HistoryMsg[] = [
-          ...storedHistory,
-          { role: "user", content: question },
-          { role: "assistant", content: answer },
-        ]
-        await saveHistory(userId, fullHistory)
-        runBackground(reviseNotes(userId, fullHistory))
-      }
-
-      return new Response(
-        JSON.stringify({
-          answer,
-          question,
-          audio_base64: bytesToBase64(audio),
-          audio_mime: "audio/mpeg",
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      )
-    }
-
-    // ---------------- STREAMING MODE (stream: true) ----------------
+    // ---------------- STREAMING MODE ----------------
     // SSE events: transcript | delta | audio | done | error
     const encoder = new TextEncoder()
     const body = new ReadableStream<Uint8Array>({
