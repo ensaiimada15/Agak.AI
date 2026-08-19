@@ -1,4 +1,4 @@
-# AgakAI 🦮
+# AgakAI
 Voice-first AI assistant that helps Filipino seniors find, understand, and claim government benefits.
 Speaks Bisaya, Tagalog, or English.
 
