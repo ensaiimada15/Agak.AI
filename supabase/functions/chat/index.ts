@@ -108,7 +108,10 @@ interface HistoryMsg { role: "user" | "assistant"; content: string }
 // (a compacted psychological summary) via a background task.
 const HISTORY_CAP = 100
 const HISTORY_SEND = 12
-const NOTES_CHARS = 400
+// Target length for user_notes. The LLM is told this is a HARD limit and
+// the final save trims at a sentence boundary (never mid-word), so the
+// summary stays readable and complete even if the model overshoots.
+const NOTES_CHARS = 600
 
 function memoryClient() {
   return createClient(
@@ -148,6 +151,22 @@ async function saveHistory(userId: number, history: HistoryMsg[]) {
     .eq("id", userId)
 }
 
+/// Trims text to at most maxChars, cutting at the LAST sentence boundary
+/// inside the window (falling back to a word boundary), so the summary is
+/// never chopped mid-word. Punctuation set mirrors consumeSentences.
+function trimToBoundary(text: string, maxChars: number): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= maxChars) return trimmed
+  const window = trimmed.slice(0, maxChars)
+  const re = /[.!?…।。！？]+["')\]”」』]*\s*/g
+  let cut = -1
+  let m: RegExpExecArray | null
+  while ((m = re.exec(window)) !== null) cut = m.index + m[0].length
+  if (cut > 0) return window.slice(0, cut).trim()
+  const lastSpace = window.lastIndexOf(" ")
+  return (lastSpace > 0 ? window.slice(0, lastSpace) : window).trim()
+}
+
 /// Background task: rewrite user_notes as a compacted psychological
 /// summary of the senior, incorporating the previous notes + the recent
 /// conversation. Replaces (not appends) so the field stays bounded.
@@ -169,14 +188,15 @@ async function reviseNotes(userId: number, history: HistoryMsg[]) {
         {
           role: "system" as const,
           content:
-            "You write a VERY SHORT psychological summary about the senior in a " +
+            "You write a SHORT psychological summary about the senior in a " +
             "voice assistant program, for a senior-care worker. Capture the most " +
             "important things: how they communicate and their emotional state, " +
             "their main concerns, and the best way to support them. " +
-            "WRITE ONLY 2-3 SHORT SENTENCES — plain text, no headings, no bullets, " +
-            "no bold. Keep it under " +
-            `${NOTES_CHARS} characters. REVISE: incorporate the previous notes ` +
-            "instead of repeating them — the summary must stay short.",
+            "Write EXACTLY 2-3 SHORT SENTENCES — plain text, no headings, no " +
+            "bullets, no bold. HARD LIMIT: at most " +
+            `${NOTES_CHARS} characters total; if you must choose, keep the most ` +
+            "important facts and drop the rest. REVISE: incorporate the previous " +
+            "notes instead of repeating them — the summary must stay short.",
         },
         {
           role: "user" as const,
@@ -190,7 +210,7 @@ async function reviseNotes(userId: number, history: HistoryMsg[]) {
 
     await memoryClient()
       .from("user")
-      .update({ user_notes: notes.slice(0, NOTES_CHARS) })
+      .update({ user_notes: trimToBoundary(notes, NOTES_CHARS) })
       .eq("id", userId)
   } catch (e) {
     console.warn("reviseNotes failed:", e)
