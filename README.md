@@ -5,11 +5,7 @@ Speaks Bisaya, Tagalog, or English.
 **Best Use of AI Award** — Can You HackIT 2026, Cebu Institute of Technology – University.
 Team representing **Silliman University**.
 
-<video src="docs/demo.mp4" autoplay muted loop playsinline>
-  Your browser does not support the video tag.
-</video>
-
-*AgakAI demo — STT → LLM → TTS voice flow*
+![AgakAI demo — STT → LLM → TTS voice flow](docs/demo.gif)
 
 > 🎬 **Watch the demo with sound on YouTube**: [youtu.be/wCxHRAbgsrE](https://youtu.be/wCxHRAbgsrE) — a senior speaking, the live transcript appearing, and the assistant replying aloud in the same language (Bisaya/Tagalog/English).
 
