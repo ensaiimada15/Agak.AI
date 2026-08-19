@@ -1,5 +1,5 @@
 name: agakai
-description: AgakAI - a senior-citizen assistance app for OSCA Dumaguete benefits, voice help, and AI chat.
+description: AgakAI - a senior-citizen assistance app for benefits, voice help, and AI chat.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,11 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  google_fonts: ^6.2.1
+  google_fonts: ^8.2.1
   cupertino_icons: ^1.0.8
   flutter_tts: ^4.2.5
   supabase_flutter: ^2.8.0
-  flutter_dotenv: ^5.2.1
+  flutter_dotenv: ^6.0.1
   http: ^1.6.0
   flutter_markdown: ^0.7.7+1
   just_audio: ^0.10.6
@@ -24,7 +24,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
   flutter_native_splash: ^2.4.8
 

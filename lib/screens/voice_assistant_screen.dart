@@ -53,8 +53,8 @@ class _VoiceAssistantScreenState extends State<VoiceAssistantScreen> {
 
   // ---- streaming chat ----
   late final AgakApi _api = AgakApi(
-    supabaseUrl: AppConfig.supabaseUrl,
-    anonKey: AppConfig.supabaseAnonKey,
+    supabaseUrl: AppConfig.supabaseUrl!,
+    anonKey: AppConfig.supabaseAnonKey!,
   );
 
   /// Bumped on every new ask/reset so stale in-flight streams are discarded.

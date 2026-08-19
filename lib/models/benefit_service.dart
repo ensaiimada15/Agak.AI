@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'benefit.dart';
+import '../services/app_config.dart';
 
 /// Retrieval service for the `benefit` table in Supabase,
 /// using plain HTTP calls to Supabase's auto-generated REST API (PostgREST)
@@ -8,7 +9,7 @@ import 'benefit.dart';
 class BenefitService {
   // TODO: replace with your project's values.
   // Found in Supabase dashboard: Project Settings > API.
-  static const String _apiKey = dotenv.env['SUPABASE_ANON_kEY'];
+  static final String? _apiKey = AppConfig.supabaseAnonKey;
   static List<Benefit>? _cachedBenefits;
 
   /// Fetches all benefits.
@@ -17,15 +18,15 @@ class BenefitService {
     if (_cachedBenefits != null && !forceRefresh) return _cachedBenefits!;
 
     final uri = Uri.parse(
-      dotenv.env['SUPABASE_URL']! + '/rest/v1/benefit?select=*',
+      '${AppConfig.supabaseUrl!}/rest/v1/benefit?select=*',
     );
 
     try {
       final response = await http.get(
         uri,
         headers: {
-          'apikey': _apiKey,
-          'Authorization': 'Bearer $_apiKey',
+          'apikey': AppConfig.supabaseAnonKey!,
+          'Authorization': 'Bearer ${AppConfig.supabaseAnonKey!}',
         },
       );
 
@@ -63,8 +64,9 @@ class BenefitService {
   /// this" notification for newly inserted benefits.
   static bool isRelevantFor(Benefit benefit, String? address) {
     final tokens = _addressTokens(address ?? '');
-    if (tokens.isEmpty)
+    if (tokens.isEmpty) {
       return true; // no address → treat everything as relevant
+    }
     final lgu = benefit.lgu.toLowerCase();
     if (lgu.startsWith('national') || lgu.contains('all lgu')) return true;
     return tokens.any(lgu.contains);

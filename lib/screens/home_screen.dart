@@ -810,7 +810,7 @@ class _CascadingMenuRow extends StatelessWidget {
               subtitle,
               style: TextStyle(
                 color: isDestructive
-                    ? Colors.red.withOpacity(0.7)
+                    ? Colors.red.withValues(alpha: 0.7)
                     : const Color(0xFF64748B),
                 fontSize: 13,
                 fontFamily: 'Rubik',
@@ -820,7 +820,7 @@ class _CascadingMenuRow extends StatelessWidget {
             Icon(
               Icons.chevron_right,
               color: isDestructive
-                  ? Colors.red.withOpacity(0.5)
+                  ? Colors.red.withValues(alpha: 0.5)
                   : const Color(0xFF94A3B8),
               size: 18,
             ),
@@ -1017,7 +1017,7 @@ class _ActionTile extends StatelessWidget {
                 subtitle,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: textColor.withOpacity(0.8),
+                  color: textColor.withValues(alpha: 0.8),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   fontFamily: 'Rubik',
