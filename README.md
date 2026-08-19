@@ -1,92 +1,127 @@
-# AgakAI Backend
+# AgakAI
 
-Supabase Edge Functions backend for AgakAI (voice assistant for senior
-citizens in Dumaguete City). Frontend lives in a separate repo — see
-[frontend-kit/](frontend-kit/) for the copy-paste client the frontend repo
-should use, and [BACKEND_API.md](BACKEND_API.md) for the full wire spec.
+**AgakAI** is a senior-citizen assistance app for the Philippines. It helps *Lolas* and *Lolos* discover, understand, and claim their government benefits — through a simple, voice-first interface designed for aging users.
 
-## Stack
+> "Ako ang imong OSCA assistant." — AgakAI is a warm, patient companion that speaks your language and keeps you company.
 
-- **Runtime**: Supabase Edge Functions (Deno)
-- **STT**: ElevenLabs Scribe (`scribe_v1`)
-- **TTS**: ElevenLabs streaming TTS (`eleven_flash_v2_5`, sentence-level)
-- **LLM**: OpenRouter (OpenAI-compatible, streamed)
-- **Persona**: editable markdown (`supabase/functions/chat/persona.md`) served
-  from Supabase Storage — no redeploy to change it
-- **DB**: Supabase Postgres (`benefits`, `documents`, `seniors` tables;
-  migration in `supabase/migrations/`)
+AgakAI was built as an entry for **Can You HackIT 2026**, held at **Cebu Institute of Technology – University (CIT-U)**, Cebu City.
 
-## Pipeline (POST /functions/v1/chat, `stream: true`)
+---
+
+## ✨ What it does
+
+### 🏠 Home (Balay)
+- Personalized greeting using the logged-in senior's first name.
+- A quick view of the **available benefits** most relevant to their address.
+- One-tap shortcuts to the **Voice Assistant** and **My Benefits**.
+- Profile details (Senior ID, age, address, etc.) available from the menu.
+- Language switcher built into the home menu.
+
+### 🎙️ Voice Assistant (Tingog) — *the centerpiece*
+- **Tap-to-talk voice chat**: no on-device speech recognizer, so nothing cuts you off on silence — speak as long as you like, tap the mic when done.
+- **Server-side speech-to-text** (ElevenLabs), then a **streaming AI answer** (OpenRouter LLM) rendered live and read back aloud with **whole-answer text-to-speech** (no skipped or garbled audio).
+- Replies in the same language you ask in — **Bisaya, Tagalog, or English**.
+- **Personalized**: AgakAI greets each senior by name and tailors advice to their city/barangay using their profile.
+- **Support notes**: a rolling, LLM-maintained summary of how AgakAI is getting to know each Lola/Lolo, updated after every conversation (viewable via the `?` button).
+- Suggested questions for a quick start (Social Pension, free check-ups, Senior Discount), plus a **type-instead** field for seniors who prefer typing.
+
+### 🪪 My Benefits
+- A catalog of government benefits — pension payouts, free medical check-ups, food subsidies, transport pass renewals, and more.
+- Each card shows category, date, location (LGU), and a plain-language description, with a "How To Claim" action.
+- **Location-aware filtering**: national benefits always show; local ones only appear when they match the senior's city/barangay.
+- **Realtime alerts**: when a new benefit is published, AgakAI pops a notification — *"We think you might like this!"* — computed from the senior's address.
+
+### ♿ Built for seniors
+- **Light-only theme** (dark mode intentionally dropped — calm and predictable for aging eyes).
+- **Standard / Enlarged text** toggle (1.2×) applied app-wide.
+- Large touch targets, high-contrast colors, and calm fades — never bouncy animations.
+- Bilingual labels (English + Bisaya/Tagalog) throughout.
+- A centered mobile-width frame on desktop browsers so the app never stretches awkwardly on a wide screen.
+
+---
+
+## 🧱 Tech stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Flutter / Dart (Android, iOS, Web, macOS, Windows, Linux) |
+| Backend | Supabase (Postgres, Auth, Realtime, Storage, Edge Functions) |
+| AI | OpenRouter (LLM), ElevenLabs (streaming STT + TTS) |
+| Key packages | `supabase_flutter`, `http`, `flutter_dotenv`, `flutter_markdown`, `just_audio`, `record`, `google_fonts`, `flutter_tts` |
+
+### Architecture notes
+- **Client** (`lib/`) — clean separation of screens, widgets, models, services, theme, and settings (i18n + text scale via an `InheritedWidget`-backed `ChangeNotifier`).
+- **Edge functions** (`supabase/functions/`) —
+  - `chat` — the full pipeline: STT → LLM → streaming SSE events (`transcript`, `delta`, `audio`, `done`, `error`) → TTS audio chunks.
+  - `tts` — one-shot speech synthesis for fixed phrases.
+  - `simplify` — benefit simplification.
+- **Edge function persona** (`supabase/functions/chat/persona.md`) — the agent's instructions, loaded from Supabase Storage so it can be tuned without redeploying.
+- **DB migrations** (`supabase/migrations/`) — seniors registry (auth trigger), `benefit` table, and per-user conversation memory (`conversation_history` jsonb + rolling `user_notes`).
+
+---
+
+## 🚀 Getting started
+
+### Prerequisites
+- Flutter SDK (≥3.3.0) and Dart
+- A Supabase project with the migrations applied and edge functions deployed
+- API keys for OpenRouter and ElevenLabs configured as edge-function secrets
+
+### Setup
+1. **Clone & install**
+   ```bash
+   flutter pub get
+   ```
+
+2. **Configure environment** — create a `.env` file at the project root (not committed; see `.gitignore`):
+   ```
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+   ```
+
+3. **Run**
+   ```bash
+   flutter run
+   ```
+
+### Tooling / extras
+- Regenerate the app launcher icon:
+  ```bash
+  dart run flutter_launcher_icons
+  ```
+- Regenerate the native splash screen:
+  ```bash
+  dart run flutter_native_splash:create
+  ```
+
+---
+
+## 📂 Project structure
 
 ```
-audio upload → STT → `transcript` event
-           → LLM tokens → `delta` events
-           → per-sentence TTS → `audio` mp3 chunk events (interleaved)
-           → `done`
+lib/
+├── main.dart                 # App entry: dotenv, Supabase init, i18n scope, theming
+├── screens/                  # login, home, voice assistant, benefits, app shell
+├── widgets/                  # bottom nav, responsive frame, screen header
+├── models/                   # benefit, profile, benefit service, profile service
+├── services/                 # AgakAI API client (SSE chat), TTS player, recorder, notifier
+├── settings/                 # app settings: language (Bisaya/Tagalog/English) + text scale
+└── theme/                    # colors & theme
+
+supabase/
+├── functions/                # chat / tts / simplify edge functions (+ persona.md)
+└── migrations/               # seniors, benefits, conversation memory, realtime
+
+assets/
+├── lang/                     # bis.json, tl.json, en.json translations
+├── data/                     # sample benefits & profile JSON
+└── images/                   # logo, avatar, splash, dashboard hero
 ```
 
-## Deploy
+---
 
-```bash
-supabase login
-supabase link --project-ref <your-project-ref>
-
-# secrets (required)
-supabase secrets set \
-  OPENROUTER_API_KEY=sk-or-v1-... \
-  ELEVENLABS_API_KEY=sk_... \
-  ELEVENLABS_VOICE_ID=...
-
-# optional overrides
-supabase secrets set \
-  OPENROUTER_LLM_MODEL=openai/gpt-4o-mini \
-  ELEVENLABS_STT_MODEL=scribe_v1 \
-  ELEVENLABS_TTS_MODEL=eleven_flash_v2_5 \
-  PERSONA_BUCKET=persona
-
-# database (seniors table + trigger) — paste into Dashboard → SQL Editor, or:
-supabase db push
-
-# dashboard prerequisite: Auth → Providers → Email → turn OFF "Confirm email"
-
-# functions
-supabase functions deploy chat
-supabase functions deploy tts
-supabase functions deploy simplify
-
-# persona into storage (bucket `persona`, public)
-supabase storage cp supabase/functions/chat/persona.md storage://persona/persona.md
-```
-
-`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` are auto-injected into edge
-functions — never set them as secrets.
-
-## Layout
-
-```
-├── BACKEND_API.md                  # wire spec for frontend devs
-├── frontend-kit/                   # copy-paste Dart client for the frontend repo
-│   ├── README.md
-│   ├── agakai_api.dart             # SSE client, typed events, tts(), seniorEmail()
-│   ├── live_audio_player.dart      # gapless live mp3 chunk player
-│   └── example_usage.dart          # events → UI states wiring
-└── supabase/
-    ├── config.toml
-    ├── migrations/20260816000000_seniors.sql
-    └── functions/
-        ├── _shared/  openrouter.ts · elevenlabs.ts
-        ├── chat/     index.ts · persona.md
-        ├── tts/      index.ts
-        └── simplify/ index.ts
-```
-
-## Editing the persona
-
-Edit `supabase/functions/chat/persona.md`, then:
-
-```bash
-supabase storage cp supabase/functions/chat/persona.md storage://persona/persona.md
-```
-
-No redeploy needed (function re-reads it within 60s). `{{BENEFITS}}` is
-replaced at runtime from the `benefits` table.
+## 🗺️ Roadmap ideas
+- Persist language & text-size preferences (currently in-memory).
+- Complete the "How To Claim" flow end-to-end.
+- OS-level sign-up for seniors (the migrations already scaffold auth-user sync).
+- Multi-LGU rollout as more `benefit` records are added.
