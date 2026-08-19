@@ -3,6 +3,7 @@ Voice-first AI assistant that helps Filipino seniors find, understand, and claim
 Speaks Bisaya, Tagalog, or English.
 
 **Best Use of AI Award** — Can You HackIT 2026, Cebu Institute of Technology – University.
+Team representing **Silliman University**.
 
 ---
 
